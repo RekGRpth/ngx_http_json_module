@@ -20,15 +20,17 @@ static ngx_str_t char_to_ngx_str_t(ngx_pool_t *pool, char *c) {
     return s;
 }
 
-static ngx_int_t ngx_http_json_loads(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
+static ngx_int_t ngx_http_json_loadb(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
     v->not_found = 1;
     ngx_http_complex_value_t *cv = (ngx_http_complex_value_t *)data;
     ngx_str_t value;
     if (ngx_http_complex_value(r, cv, &value) != NGX_OK) return NGX_OK;
-    char *buf = ngx_str_t_to_char(r->pool, value);
-    if (!buf) return NGX_OK;
-    json_t *json = json_loads(buf, 0, NULL);
+    json_t *json = json_loadb((char *)value.data, value.len, 0, NULL);
     if (!json) return NGX_OK;
+    ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
+    if (!cln) { json_decref(json); return NGX_OK; }
+    cln->handler = (ngx_pool_cleanup_pt)json_decref;
+    cln->data = json;
     v->data = (u_char *)json;
     v->len = sizeof(json_t);
     v->valid = 1;
@@ -37,14 +39,14 @@ static ngx_int_t ngx_http_json_loads(ngx_http_request_t *r, ngx_http_variable_va
     return NGX_OK;
 }
 
-static char *ngx_conf_json_loads(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
+static char *ngx_conf_json_loadb(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_str_t *value = cf->args->elts;
     if (value[1].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &value[1]); return NGX_CONF_ERROR; }
     value[1].len--;
     value[1].data++;
     ngx_http_variable_t *v = ngx_http_add_variable(cf, &value[1], NGX_HTTP_VAR_CHANGEABLE);
     if (!v) return NGX_CONF_ERROR;
-    v->get_handler = ngx_http_json_loads;
+    v->get_handler = ngx_http_json_loadb;
     ngx_http_complex_value_t *cv = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
     if (!cv) return NGX_CONF_ERROR;
     ngx_http_compile_complex_value_t ccv = {cf, &value[2], cv, 0, 0, 0};
@@ -57,6 +59,19 @@ static ngx_int_t ngx_http_json_dumps(ngx_http_request_t *r, ngx_http_variable_va
     v->not_found = 1;
     ngx_array_t *args = (ngx_array_t *)data;
     ngx_str_t *name = args->elts;
+    ngx_http_variable_value_t *var = ngx_http_get_variable(r, name[0], ngx_hash_key(name[0].data, name[0].len));
+    if (!var || !var->data || var->len != sizeof(json_t)) return NGX_OK;
+    json_t *json = var->data;
+    for (ngx_uint_t i = 1; json && (i < args->nelts); i++) json = json_object_get(json, ngx_str_t_to_char(r->pool, name[i]));
+    const char *value = json_string_value(json);
+    if (!value) value = json_dumps(json, JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY);
+    if (!value) return NGX_OK;
+    ngx_str_t dumps = char_to_ngx_str_t(r->pool, value);
+    v->data = dumps.data;
+    v->len = dumps.len;
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
     return NGX_OK;
 }
 
@@ -65,8 +80,6 @@ static char *ngx_conf_json_dumps(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     if (value[2].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &value[2]); return NGX_CONF_ERROR; }
     value[2].len--;
     value[2].data++;
-    ngx_int_t index = ngx_http_get_variable_index(cf, &value[2]);
-    if (index == NGX_ERROR) return NGX_CONF_ERROR;
     if (value[1].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &value[1]); return NGX_CONF_ERROR; }
     value[1].len--;
     value[1].data++;
@@ -85,9 +98,9 @@ static char *ngx_conf_json_dumps(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 }
 
 static ngx_command_t ngx_http_json_commands[] = {
-  { ngx_string("json_loads"),
+  { ngx_string("json_loadb"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE2,
-    ngx_conf_json_loads,
+    ngx_conf_json_loadb,
     NGX_HTTP_LOC_CONF_OFFSET,
     0,
     NULL },
