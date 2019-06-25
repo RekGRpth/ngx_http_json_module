@@ -13,7 +13,7 @@ static char *ngx_str_t_to_char(ngx_pool_t *pool, ngx_str_t s) {
     return c;
 }
 
-static ngx_str_t char_to_ngx_str_t(ngx_pool_t *pool, char *c) {
+static ngx_str_t char_to_ngx_str_t(ngx_pool_t *pool, const char *c) {
     size_t len = ngx_strlen(c);
     ngx_str_t s = {len, ngx_pnalloc(pool, len * sizeof(char))};
     if (s.data) ngx_memcpy(s.data, c, len); else s.len = 0;
@@ -59,9 +59,9 @@ static ngx_int_t ngx_http_json_dumps(ngx_http_request_t *r, ngx_http_variable_va
     v->not_found = 1;
     ngx_array_t *args = (ngx_array_t *)data;
     ngx_str_t *name = args->elts;
-    ngx_http_variable_value_t *var = ngx_http_get_variable(r, name[0], ngx_hash_key(name[0].data, name[0].len));
+    ngx_http_variable_value_t *var = ngx_http_get_variable(r, name, ngx_hash_key(name->data, name->len));
     if (!var || !var->data || var->len != sizeof(json_t)) return NGX_OK;
-    json_t *json = var->data;
+    json_t *json = (json_t *)var->data;
     for (ngx_uint_t i = 1; json && (i < args->nelts); i++) json = json_object_get(json, ngx_str_t_to_char(r->pool, name[i]));
     const char *value = json_string_value(json);
     if (!value) value = json_dumps(json, JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY);
