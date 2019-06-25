@@ -2,7 +2,7 @@
 
 ### Directives:
 
-    Syntax:	 json_loadb $json string;
+    Syntax:	 json_loads $json string;
     Default: ——
     Context: http, server, location
 
