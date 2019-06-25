@@ -62,16 +62,14 @@ static ngx_int_t ngx_http_json_dumps(ngx_http_request_t *r, ngx_http_variable_va
 
 static char *ngx_conf_json_dumps(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_str_t *value = cf->args->elts;
-    if (value[1].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &value[1]); return NGX_CONF_ERROR; }
     if (value[2].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &value[2]); return NGX_CONF_ERROR; }
-    value[1].len--;
-    value[1].data++;
     value[2].len--;
     value[2].data++;
-
     ngx_int_t index = ngx_http_get_variable_index(cf, &value[2]);
     if (index == NGX_ERROR) return NGX_CONF_ERROR;
-
+    if (value[1].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &value[1]); return NGX_CONF_ERROR; }
+    value[1].len--;
+    value[1].data++;
     ngx_http_variable_t *v = ngx_http_add_variable(cf, &value[1], NGX_HTTP_VAR_CHANGEABLE);
     if (!v) return NGX_CONF_ERROR;
     v->get_handler = ngx_http_json_dumps;
