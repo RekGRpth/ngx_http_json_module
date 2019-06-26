@@ -31,19 +31,19 @@ static u_char *ngx_http_json_headers_set(ngx_http_request_t *r, u_char *p, size_
 }
 
 static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
-    v->not_found = 1;
-//    ngx_list_part_t *part = &r->headers_in.headers.part;
-    size_t size = sizeof("{}") - 1 - 1;
-    u_char *p = ngx_http_json_headers_set(r, NULL, &size);
-    if (!p) return NGX_ERROR;
-    v->data = p;
-    p = ngx_http_json_headers_set(r, p, NULL);
-//    *p = '\0';
     v->valid = 1;
     v->no_cacheable = 0;
     v->not_found = 0;
+    size_t size = sizeof("{}") - 1 - 1;
+    u_char *p = ngx_http_json_headers_set(r, NULL, &size);
+    if (!p) goto err;
+    v->data = p;
+    p = ngx_http_json_headers_set(r, p, NULL);
     v->len = p - v->data;
-    if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_var_headers: result length %l exceeded allocated length %l", v->len, size); return NGX_ERROR; }
+    if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_var_headers: result length %l exceeded allocated length %l", v->len, size); goto err; }
+    return NGX_OK;
+err:
+    ngx_str_set(v, "null");
     return NGX_OK;
 }
 
