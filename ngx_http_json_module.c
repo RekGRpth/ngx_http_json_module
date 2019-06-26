@@ -145,6 +145,40 @@ err:
     return NGX_OK;
 }
 
+static u_char *ngx_http_json_post_vars_data(u_char *p, ngx_pool_t *pool, u_char *content_type, u_char *echo_request_body, u_char *body) {
+    u_char *mime_type_end_ptr = (u_char *)ngx_strchr(content_type, ';');
+    if (!mime_type_end_ptr) return NULL;
+    u_char *boundary_start_ptr = ngx_strstrn(mime_type_end_ptr, "boundary=", sizeof("boundary=") - 1 - 1);
+    if (!boundary_start_ptr) return NULL;
+    boundary_start_ptr += sizeof("boundary=") - 1;
+    u_char *boundary_end_ptr = boundary_start_ptr + strcspn((char *)boundary_start_ptr, " ;\n\r");
+    if (boundary_end_ptr == boundary_start_ptr) return NULL;
+    ngx_str_t boundary = {boundary_end_ptr - boundary_start_ptr + 4, ngx_palloc(pool, boundary_end_ptr - boundary_start_ptr + 4 + 1)};
+    if (!boundary.data) return NULL;
+    (void) ngx_cpystrn(boundary.data + 4, boundary_start_ptr, boundary_end_ptr - boundary_start_ptr + 1);
+    boundary.data[0] = '\r'; boundary.data[1] = '\n'; boundary.data[2] = '-'; boundary.data[3] = '-'; boundary.data[boundary.len] = '\0';
+    for (
+        u_char *s = echo_request_body, *name_start_ptr;
+        (name_start_ptr = ngx_strstrn(s, "\r\nContent-Disposition: form-data; name=\"", sizeof("\r\nContent-Disposition: form-data; name=\"") - 1 - 1)) != NULL;
+        s += boundary.len
+    ) {
+        name_start_ptr += sizeof("\r\nContent-Disposition: form-data; name=\"") - 1;
+        u_char *name_end_ptr = ngx_strstrn(name_start_ptr, "\"\r\n\r\n", sizeof("\"\r\n\r\n") - 1 - 1);
+        if (!name_end_ptr) return NULL;
+        if (p != body) *p++ = ',';
+        *p++ = '"';
+        p = (u_char*)ngx_escape_json(p, name_start_ptr, name_end_ptr - name_start_ptr);
+        *p++ = '"'; *p++ = ':';
+        u_char *value_start_ptr = name_end_ptr + sizeof("\"\r\n\r\n") - 1;
+        u_char *value_end_ptr = ngx_strstrn(value_start_ptr, (char *)boundary.data, boundary.len - 1);
+        if (!value_end_ptr) return NULL;
+        *p++ = '"';
+        p = (u_char*)ngx_escape_json(p, value_start_ptr, value_end_ptr - value_start_ptr);
+        *p++ = '"';
+    }
+    return p;
+}
+
 static ngx_int_t ngx_http_json_post_vars(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
     v->valid = 1;
     v->no_cacheable = 0;
@@ -174,42 +208,8 @@ static ngx_int_t ngx_http_json_post_vars(ngx_http_request_t *r, ngx_http_variabl
             if (!p) goto err;
             v->data = p;
             *p++ = '{';
-            u_char *mime_type_end_ptr = (u_char*) ngx_strchr(r->headers_in.content_type->value.data, ';');
-            if (!mime_type_end_ptr) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!mime_type_end_ptr"); } else {
-                u_char *boundary_start_ptr = ngx_strstrn(mime_type_end_ptr, "boundary=", sizeof("boundary=") - 1 - 1);
-                if (!boundary_start_ptr) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!boundary_start_ptr"); } else {
-                    boundary_start_ptr += sizeof("boundary=") - 1;
-                    u_char *boundary_end_ptr = boundary_start_ptr + strcspn((char *)boundary_start_ptr, " ;\n\r");
-                    if (boundary_end_ptr == boundary_start_ptr) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "boundary_end_ptr == boundary_start_ptr"); } else {
-                        ngx_str_t boundary = {.len = boundary_end_ptr - boundary_start_ptr + 4, .data = ngx_palloc(r->pool, boundary_end_ptr - boundary_start_ptr + 4 + 1)};
-                        if (!boundary.data) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!boundary.data"); } else {
-                            (void) ngx_cpystrn(boundary.data + 4, boundary_start_ptr, boundary_end_ptr - boundary_start_ptr + 1);
-                            boundary.data[0] = '\r'; boundary.data[1] = '\n'; boundary.data[2] = '-'; boundary.data[3] = '-'; boundary.data[boundary.len] = '\0';
-                            for (
-                                u_char *s = echo_request_body->data, *name_start_ptr;
-                                (name_start_ptr = ngx_strstrn(s, "\r\nContent-Disposition: form-data; name=\"", sizeof("\r\nContent-Disposition: form-data; name=\"") - 1 - 1)) != NULL;
-                                s += boundary.len
-                            ) {
-                                name_start_ptr += sizeof("\r\nContent-Disposition: form-data; name=\"") - 1;
-                                u_char *name_end_ptr = ngx_strstrn(name_start_ptr, "\"\r\n\r\n", sizeof("\"\r\n\r\n") - 1 - 1);
-                                if (!name_end_ptr) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!name_end_ptr"); } else {
-                                    if (p != v->data + 1) *p++ = ',';
-                                    *p++ = '"';
-                                    p = (u_char*)ngx_escape_json(p, name_start_ptr, name_end_ptr - name_start_ptr);
-                                    *p++ = '"'; *p++ = ':';
-                                    u_char *value_start_ptr = name_end_ptr + sizeof("\"\r\n\r\n") - 1;
-                                    u_char *value_end_ptr = ngx_strstrn(value_start_ptr, (char *)boundary.data, boundary.len - 1);
-                                    if (!value_end_ptr) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!value_end_ptr"); } else {
-                                        *p++ = '"';
-                                        p = (u_char*)ngx_escape_json(p, value_start_ptr, value_end_ptr - value_start_ptr);
-                                        *p++ = '"';
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            p = ngx_http_json_post_vars_data(p, r->pool, r->headers_in.content_type->value.data, echo_request_body->data, v->data + 1);
+            if (!p) goto err;
             *p++ = '}';
             v->len = p - v->data;
             if (v->len > echo_request_body->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_post_vars: result length %l exceeded allocated length %l", v->len, echo_request_body->len); goto err; }
