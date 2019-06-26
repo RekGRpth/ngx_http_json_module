@@ -6,6 +6,83 @@
 
 ngx_module_t ngx_http_json_module;
 
+static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
+    v->not_found = 1;
+    json_t *json = json_object();
+    if (!json) return NGX_OK;
+    ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
+    if (!cln) { json_decref(json); return NGX_OK; }
+    cln->handler = (ngx_pool_cleanup_pt)json_decref;
+    cln->data = json;
+    ngx_list_part_t *part = &r->headers_in.headers.part;
+    do {
+        ngx_table_elt_t *header = part->elts;
+        for (ngx_uint_t i = 0; i < part->nelts; i++) {
+            char key[header[i].key.len + 1];
+            ngx_memcpy(key, header[i].key.data, header[i].key.len);
+            key[header[i].key.len] = '\0';
+            json_t *value = json_stringn((const char *)header[i].value.data, header[i].value.len);
+            ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
+            if (!cln) { json_decref(value); return NGX_OK; }
+            cln->handler = (ngx_pool_cleanup_pt)json_decref;
+            cln->data = value;
+            (int)json_object_set(json, key, value);
+//            json_t *json_null(void)
+        }
+        part = part->next;
+    } while (part);
+    const char *value = json_dumps(json, JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY);
+    if (!value) return NGX_OK;
+    v->data = (u_char *)value;
+    v->len = ngx_strlen(value);
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+    return NGX_OK;
+}
+
+static ngx_http_variable_t ngx_http_json_variables[] = {
+  { ngx_string("json_headers1"),
+    NULL,
+    ngx_http_json_headers,
+    0,
+    NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    0 },
+/*  { ngx_string("json_cookies1"),
+    NULL,
+    ngx_http_json_cookies,
+    0,
+    NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    0 },
+  { ngx_string("json_get_vars1"),
+    NULL,
+    ngx_http_json_get_vars,
+    0,
+    NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    0 },
+  { ngx_string("json_post_vars1"),
+    NULL,
+    ngx_http_json_post_vars,
+    0,
+    NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    0 },*/
+  { ngx_null_string,
+    NULL,
+    NULL,
+    0,
+    0,
+    0 }
+};
+
+static ngx_int_t ngx_http_json_add_variables(ngx_conf_t *cf) {
+    for (ngx_http_variable_t *v = ngx_http_json_variables; v->name.len; v++) {
+        ngx_http_variable_t *var = ngx_http_add_variable(cf, &v->name, v->flags);
+        if (!var) return NGX_ERROR;
+        *var = *v;
+    }
+    return NGX_OK;
+}
+
 static ngx_int_t ngx_http_json_loads_handler(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
     v->not_found = 1;
     ngx_http_complex_value_t *cv = (ngx_http_complex_value_t *)data;
@@ -49,10 +126,10 @@ static ngx_int_t ngx_http_json_dumps_handler(ngx_http_request_t *r, ngx_http_var
     if (!var || !var->data || var->len != sizeof(json_t)) return NGX_OK;
     json_t *json = (json_t *)var->data;
     for (ngx_uint_t i = 1; json && (i < args->nelts); i++) {
-        char grant[name[i].len + 1];
-        ngx_memcpy(grant, name[i].data, name[i].len);
-        grant[name[i].len] = '\0';
-        json = json_object_get(json, grant);
+        char key[name[i].len + 1];
+        ngx_memcpy(key, name[i].data, name[i].len);
+        key[name[i].len] = '\0';
+        json = json_object_get(json, key);
     }
     const char *value = json_string_value(json);
     if (!value) value = json_dumps(json, JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY);
@@ -104,30 +181,30 @@ static ngx_command_t ngx_http_json_commands[] = {
 };
 
 static ngx_http_module_t ngx_http_json_module_ctx = {
-    NULL,                      /* preconfiguration */
-    NULL,                      /* postconfiguration */
+    ngx_http_json_add_variables, /* preconfiguration */
+    NULL,                        /* postconfiguration */
 
-    NULL,                      /* create main configuration */
-    NULL,                      /* init main configuration */
+    NULL,                        /* create main configuration */
+    NULL,                        /* init main configuration */
 
-    NULL,                      /* create server configuration */
-    NULL,                      /* merge server configuration */
+    NULL,                        /* create server configuration */
+    NULL,                        /* merge server configuration */
 
-    NULL,                      /* create location configuration */
-    NULL                       /* merge location configuration */
+    NULL,                        /* create location configuration */
+    NULL                         /* merge location configuration */
 };
 
 ngx_module_t ngx_http_json_module = {
     NGX_MODULE_V1,
-    &ngx_http_json_module_ctx, /* module context */
-    ngx_http_json_commands,    /* module directives */
-    NGX_HTTP_MODULE,           /* module type */
-    NULL,                      /* init master */
-    NULL,                      /* init module */
-    NULL,                      /* init process */
-    NULL,                      /* init thread */
-    NULL,                      /* exit thread */
-    NULL,                      /* exit process */
-    NULL,                      /* exit master */
+    &ngx_http_json_module_ctx,   /* module context */
+    ngx_http_json_commands,      /* module directives */
+    NGX_HTTP_MODULE,             /* module type */
+    NULL,                        /* init master */
+    NULL,                        /* init module */
+    NULL,                        /* init process */
+    NULL,                        /* init thread */
+    NULL,                        /* exit thread */
+    NULL,                        /* exit process */
+    NULL,                        /* exit master */
     NGX_MODULE_V1_PADDING
 };
