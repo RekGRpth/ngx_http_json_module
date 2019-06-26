@@ -88,54 +88,35 @@ static size_t ngx_http_json_get_vars_size(u_char *start, u_char *end) {
     return size;
 }
 
+#define unescape_characters { \
+    switch (*start++) { \
+        case '%': { \
+            c = *start++; \
+            if (c >= 0x30) c -= 0x30; \
+            if (c >= 0x10) c -= 0x07; \
+            *p = (c << 4); \
+            c = *start++; \
+            if (c >= 0x30) c -= 0x30; \
+            if (c >= 0x10) c -= 0x07; \
+            *p += c; \
+            c = *p; \
+        } break; \
+        case '+': c = ' '; break; \
+        default: c = *start; \
+    } \
+    if (c == '\\' || c == '"') *p++ = '\\'; \
+    *p++ = c; \
+}
 static u_char *ngx_http_json_get_vars_data(u_char *p, u_char *start, u_char *end, u_char *args) {
     for (u_char c; start < end; ) {
         if (p != args) *p++ = ',';
         *p++ = '"';
         while (start < end && (*start == '=' || *start == '&')) start++;
-        while (start < end && *start != '=' && *start != '&') {
-            switch (*start++) {
-                case '%': {
-                    c = *start++;
-                    if (c >= 0x30) c -= 0x30;
-                    if (c >= 0x10) c -= 0x07;
-                    *p = (c << 4);
-                    c = *start++;
-                    if (c >= 0x30) c -= 0x30;
-                    if (c >= 0x10) c -= 0x07;
-                    *p += c;
-                    c = *p;
-                } break;
-                case '+': c = ' '; break; 
-                default: c = *start;
-            }
-            if (c == '\\' || c == '"') *p++ = '\\';
-            *p++ = c;
-        }
-        *p++ = '"';
-        *p++ = ':';
+        while (start < end && *start != '=' && *start != '&') unescape_characters
+        *p++ = '"'; *p++ = ':';
         if (start < end && *start++ != '&') {
             *p++ = '"';
-                start++;
-                while (start < end && *start != '&') {
-                    switch (*start++) {
-                        case '%': {
-                            c = *start++;
-                            if (c >= 0x30) c -= 0x30;
-                            if (c >= 0x10) c -= 0x07;
-                            *p = (c << 4);
-                            c = *start++;
-                            if (c >= 0x30) c -= 0x30;
-                            if (c >= 0x10) c -= 0x07;
-                            *p += c;
-                            c = *p;
-                        } break;
-                        case '+': c = ' '; break;
-                        default: c = *start;
-                    }
-                    if (c == '\\' || c == '"') *p++ = '\\';
-                    *p++ = c;
-                }
+            while (start < end && *start != '&') unescape_characters
             *p++ = '"';
         } else {
             *p++ = 'n'; *p++ = 'u'; *p++ = 'l'; *p++ = 'l';
