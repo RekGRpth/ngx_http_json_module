@@ -6,39 +6,27 @@
 
 ngx_module_t ngx_http_json_module;
 
-static u_char *ngx_http_json_headers_set(ngx_http_request_t *r, u_char *p, size_t *size) {
-    char first = 1;
-    if (p) *p++ = '{';
-    ngx_list_part_t *part = &r->headers_in.headers.part;
-    do {
-        ngx_table_elt_t *header = part->elts;
-        for (ngx_uint_t i = 0; i < part->nelts; i++) {
-            if (!p) *size += (sizeof("\"\":\"\",") - 1) + header[i].key.len + header[i].value.len + ngx_escape_json(NULL, header[i].value.data, header[i].value.len); else {
-                if (!first) *p++ = ',';
-                *p++ = '"';
-                p = ngx_copy(p, header[i].key.data, header[i].key.len);
-                *p++ = '"'; *p++ = ':'; *p++ = '"';
-                p = (u_char *)ngx_escape_json(p, header[i].value.data, header[i].value.len);
-                *p++ = '"';
-                first = 0;
-            }
-        }
-        part = part->next;
-    } while (part);
-    if (p) *p++ = '}';
-    else p = ngx_palloc(r->pool, *size);
-    return p;
-}
-
 static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
     v->valid = 1;
     v->no_cacheable = 0;
     v->not_found = 0;
-    size_t size = sizeof("{}") - 1 - 1;
-    u_char *p = ngx_http_json_headers_set(r, NULL, &size);
+    size_t size = sizeof("{}") - 1;
+    ngx_list_part_t *part = &r->headers_in.headers.part;
+    for (ngx_table_elt_t *header = part->elts; part; part = part->next) for (ngx_uint_t i = 0; i < part->nelts; i++) size += (sizeof("\"\":\"\",") - 1) + header[i].key.len + header[i].value.len + ngx_escape_json(NULL, header[i].value.data, header[i].value.len); 
+    u_char *p = ngx_palloc(r->pool, size);
     if (!p) goto err;
     v->data = p;
-    p = ngx_http_json_headers_set(r, p, NULL);
+    *p++ = '{';
+    part = &r->headers_in.headers.part;
+    for (ngx_table_elt_t *header = part->elts; part; part = part->next) for (ngx_uint_t i = 0; i < part->nelts; i++) {
+        if (p != v->data + 1) *p++ = ',';
+        *p++ = '"';
+        p = ngx_copy(p, header[i].key.data, header[i].key.len);
+        *p++ = '"'; *p++ = ':'; *p++ = '"';
+        p = (u_char *)ngx_escape_json(p, header[i].value.data, header[i].value.len);
+        *p++ = '"';
+    }
+    *p++ = '}';
     v->len = p - v->data;
     if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_headers: result length %l exceeded allocated length %l", v->len, size); goto err; }
     return NGX_OK;
@@ -47,13 +35,14 @@ err:
     return NGX_OK;
 }
 
-static size_t ngx_http_json_cookies_size(size_t size, u_char *start, u_char *end) {
-    for (; start < end; start++, size++) {
+static size_t ngx_http_json_cookies_size(u_char *start, u_char *end) {
+    size_t size;
+    for (size = 0; start < end; start++, size++) {
         while (start < end && *start == ' ') start++;
         if (*start == '\\' || *start == '"') size++;
         else if (*start == ';') size += sizeof("\"\":\"\",") - 1;
     }
-    return size + (sizeof("\"\":\"\"") - 1);
+    return size;
 }
 
 static u_char *ngx_http_json_cookies_data(u_char *p, u_char *start, u_char *end, u_char *cookies) {
@@ -73,9 +62,9 @@ static ngx_int_t ngx_http_json_cookies(ngx_http_request_t *r, ngx_http_variable_
     v->valid = 1;
     v->no_cacheable = 0;
     v->not_found = 0;
-    size_t size = sizeof("{}") - 1;
+    size_t size = sizeof("{}\"\":\"\"") - 1;
     ngx_table_elt_t **h = r->headers_in.cookies.elts;
-    for (ngx_uint_t i = 0; i < r->headers_in.cookies.nelts; i++) size = ngx_http_json_cookies_size(size, h[i]->value.data, h[i]->value.data + h[i]->value.len);
+    for (ngx_uint_t i = 0; i < r->headers_in.cookies.nelts; i++) size += ngx_http_json_cookies_size(h[i]->value.data, h[i]->value.data + h[i]->value.len);
     u_char *p = ngx_palloc(r->pool, size);
     if (!p) goto err;
     v->data = p;
