@@ -40,7 +40,7 @@ static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_
     v->data = p;
     p = ngx_http_json_headers_set(r, p, NULL);
     v->len = p - v->data;
-    if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_var_headers: result length %l exceeded allocated length %l", v->len, size); goto err; }
+    if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_headers: result length %l exceeded allocated length %l", v->len, size); goto err; }
     return NGX_OK;
 err:
     ngx_str_set(v, "null");
