@@ -6,6 +6,18 @@
 
 ngx_module_t ngx_http_json_module;
 
+typedef struct {
+    ngx_str_t name;
+    ngx_http_complex_value_t cv;
+    ngx_str_t value;
+    uintptr_t escape;
+} ngx_http_json_var_field_t;
+
+typedef struct {
+    ngx_conf_t *cf;
+    ngx_array_t *fields; // of ngx_http_json_var_field_t
+} ngx_http_json_var_ctx_t;
+
 static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
     v->valid = 1;
     v->no_cacheable = 0;
@@ -222,25 +234,25 @@ err:
 }
 
 static ngx_http_variable_t ngx_http_json_variables[] = {
-  { ngx_string("json_headers1"),
+  { ngx_string("json_headers"),
     NULL,
     ngx_http_json_headers,
     0,
     NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
     0 },
-  { ngx_string("json_cookies1"),
+  { ngx_string("json_cookies"),
     NULL,
     ngx_http_json_cookies,
     0,
     NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
     0 },
-  { ngx_string("json_get_vars1"),
+  { ngx_string("json_get_vars"),
     NULL,
     ngx_http_json_get_vars,
     0,
     NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
     0 },
-  { ngx_string("json_post_vars1"),
+  { ngx_string("json_post_vars"),
     NULL,
     ngx_http_json_post_vars,
     0,
@@ -344,6 +356,80 @@ static char *ngx_http_json_dumps_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *
     return NGX_CONF_OK;
 }
 
+static ngx_int_t ngx_http_json_var_http_handler(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
+    ngx_array_t *ctx = (ngx_array_t *)data;
+    ngx_http_json_var_field_t *fields = ctx->elts;
+    size_t size = sizeof("{}");
+    for (ngx_uint_t i = 0; i < ctx->nelts; i++) {
+        if (ngx_http_complex_value(r, &fields[i].cv, &fields[i].value) != NGX_OK) return NGX_ERROR;
+        fields[i].escape = ngx_escape_json(NULL, fields[i].value.data, fields[i].value.len);
+        size += sizeof("\"\":\"\",") + fields[i].name.len + fields[i].value.len + fields[i].escape;
+    }
+    u_char *p = ngx_palloc(r->pool, size);
+    if (!p) return NGX_ERROR;
+    v->data = p;
+    *p++ = '{';
+    for (ngx_uint_t i = 0; i < ctx->nelts; i++) {
+        if (i > 0) *p++ = ',';
+        *p++ = '"';
+        p = ngx_copy(p, fields[i].name.data, fields[i].name.len);
+        *p++ = '"';
+        *p++ = ':';
+        if ((ngx_strncasecmp(fields[i].name.data, (u_char *)"json_headers", sizeof("json_headers") - 1) == 0)
+         || (ngx_strncasecmp(fields[i].name.data, (u_char *)"json_cookies", sizeof("json_cookies") - 1) == 0)
+         || (ngx_strncasecmp(fields[i].name.data, (u_char *)"json_get_vars", sizeof("json_get_vars") - 1) == 0)
+         || (ngx_strncasecmp(fields[i].name.data, (u_char *)"json_post_vars", sizeof("json_post_vars") - 1) == 0)
+        ) p = ngx_copy(p, fields[i].value.data, fields[i].value.len); else {
+            *p++ = '"';
+            if (fields[i].escape) p = (u_char *)ngx_escape_json(p, fields[i].value.data, fields[i].value.len);
+            else p = ngx_copy(p, fields[i].value.data, fields[i].value.len);
+            *p++ = '"';
+        }
+    }
+    *p++ = '}';
+    *p = '\0';
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+    v->len = p - v->data;
+    if (v->len >= size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_var_variable: result length %uD exceeded allocated length %uz", (uint32_t)v->len, size); return NGX_ERROR; }
+    return NGX_OK;
+}
+
+static char *ngx_http_json_var_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
+    ngx_http_json_var_ctx_t *ctx = cf->ctx;
+    ngx_http_json_var_field_t *item = ngx_array_push(ctx->fields);
+    if (!item) return NGX_CONF_ERROR;
+    ngx_str_t *value = cf->args->elts;
+    ngx_http_compile_complex_value_t ccv = {ctx->cf, &value[1], &item->cv, 0, 0, 0};
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return NGX_CONF_ERROR;
+    item->name = value[0];
+    return NGX_CONF_OK;
+}
+
+static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
+    ngx_str_t *value = cf->args->elts;
+    ngx_str_t name = value[1];
+    if (name.data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &name); return NGX_CONF_ERROR; }
+    name.len--;
+    name.data++;
+    ngx_array_t *fields = ngx_array_create(cf->pool, 4, sizeof(ngx_http_json_var_field_t));
+    if (!fields) return NGX_CONF_ERROR;
+    ngx_http_variable_t *var = ngx_http_add_variable(cf, &name, NGX_HTTP_VAR_CHANGEABLE | NGX_HTTP_VAR_NOCACHEABLE);
+    if (!var) return NGX_CONF_ERROR;
+    var->get_handler = ngx_http_json_var_http_handler;
+    var->data = (uintptr_t)fields;
+    ngx_conf_t save = *cf;
+    ngx_http_json_var_ctx_t ctx = {&save, fields};
+    cf->ctx = &ctx;
+    cf->handler = ngx_http_json_var_conf_handler;
+    char *rv = ngx_conf_parse(cf, NULL);
+    *cf = save;
+    if (rv != NGX_CONF_OK) return rv;
+    if (fields->nelts <= 0) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "no fields defined in \"json_var\" block"); return NGX_CONF_ERROR; }
+    return rv;
+}
+
 static ngx_command_t ngx_http_json_commands[] = {
   { ngx_string("json_loads"),
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE2,
@@ -355,6 +441,12 @@ static ngx_command_t ngx_http_json_commands[] = {
     NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_2MORE,
     ngx_http_json_dumps_conf,
     NGX_HTTP_LOC_CONF_OFFSET,
+    0,
+    NULL },
+  { ngx_string("json_var"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_BLOCK|NGX_CONF_TAKE1,
+    ngx_http_json_var_conf,
+    0,
     0,
     NULL },
     ngx_null_command
