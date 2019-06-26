@@ -4,6 +4,13 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
+typedef enum CONTENT_TYPE {
+    CONTENT_TYPE_NONE = 0,
+    CONTENT_TYPE_URLENCODED,
+    CONTENT_TYPE_MULTIPART,
+    CONTENT_TYPE_JSON,
+} CONTENT_TYPE_T;
+
 ngx_module_t ngx_http_json_module;
 
 static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
@@ -85,12 +92,13 @@ static size_t ngx_http_json_get_vars_size(u_char *start, u_char *end) {
         if (*start == '\\' || *start == '"') size++;
         else if (*start == '&') size += sizeof("\"\":\"\",") - 1;
     }
-    return size;
+    return size + 2;
 }
 
 #define unescape_characters { \
-    switch (*start++) { \
+    switch (*start) { \
         case '%': { \
+            start++; \
             c = *start++; \
             if (c >= 0x30) c -= 0x30; \
             if (c >= 0x10) c -= 0x07; \
@@ -101,8 +109,8 @@ static size_t ngx_http_json_get_vars_size(u_char *start, u_char *end) {
             *p += c; \
             c = *p; \
         } break; \
-        case '+': c = ' '; break; \
-        default: c = *start; \
+        case '+': { c = ' '; start++; } break; \
+        default: c = *start++; \
     } \
     if (c == '\\' || c == '"') *p++ = '\\'; \
     *p++ = c; \
@@ -143,6 +151,97 @@ err:
     ngx_str_set(v, "null");
     return NGX_OK;
 }
+
+/*static ngx_int_t ngx_http_json_var_post_vars(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
+    char parse_body = CONTENT_TYPE_NONE;
+    ngx_str_t echo_request_body_var = ngx_string("echo_request_body");
+    ngx_http_variable_value_t *echo_request_body = ngx_http_get_variable(r, &echo_request_body_var, ngx_hash_key(echo_request_body_var.data, echo_request_body_var.len));
+    if (echo_request_body->data && r->headers_in.content_type) {
+        if (ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/x-www-form-urlencoded", sizeof("application/x-www-form-urlencoded") - 1) == 0) { parse_body = CONTENT_TYPE_URLENCODED; }
+        else if (ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/json", sizeof("application/json") - 1) == 0) { parse_body = CONTENT_TYPE_JSON; }
+        else if (ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"multipart/form-data", sizeof("multipart/form-data") - 1) == 0) { parse_body = CONTENT_TYPE_MULTIPART; }
+    }
+    switch (parse_body) {
+        case CONTENT_TYPE_MULTIPART: {
+            u_char *p = ngx_palloc(r->pool, echo_request_body->len + 1);
+            if (!p) return NGX_ERROR;
+            v->data = p;
+            *p++ = '{';
+            u_char *mime_type_end_ptr = (u_char*) ngx_strchr(r->headers_in.content_type->value.data, ';');
+            if (!mime_type_end_ptr) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!mime_type_end_ptr"); } else {
+                u_char *boundary_start_ptr = ngx_strstrn(mime_type_end_ptr, "boundary=", sizeof("boundary=") - 1 - 1);
+                if (!boundary_start_ptr) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!boundary_start_ptr"); } else {
+                    boundary_start_ptr += sizeof("boundary=") - 1;
+                    u_char *boundary_end_ptr = boundary_start_ptr + strcspn((char *)boundary_start_ptr, " ;\n\r");
+                    if (boundary_end_ptr == boundary_start_ptr) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "boundary_end_ptr == boundary_start_ptr"); } else {
+                        ngx_str_t boundary = {.len = boundary_end_ptr - boundary_start_ptr + 4, .data = ngx_palloc(r->pool, boundary_end_ptr - boundary_start_ptr + 4 + 1)};
+                        if (!boundary.data) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!boundary.data"); } else {
+                            (void) ngx_cpystrn(boundary.data + 4, boundary_start_ptr, boundary_end_ptr - boundary_start_ptr + 1);
+                            boundary.data[0] = '\r'; 
+                            boundary.data[1] = '\n'; 
+                            boundary.data[2] = '-'; 
+                            boundary.data[3] = '-'; 
+                            boundary.data[boundary.len] = '\0';
+                            for (
+                                u_char *s = echo_request_body->data, *name_start_ptr;
+                                (name_start_ptr = ngx_strstrn(s, "\r\nContent-Disposition: form-data; name=\"", sizeof("\r\nContent-Disposition: form-data; name=\"") - 1 - 1)) != NULL;
+                                s += boundary.len
+                            ) {
+                                name_start_ptr += sizeof("\r\nContent-Disposition: form-data; name=\"") - 1;
+                                u_char *name_end_ptr = ngx_strstrn(name_start_ptr, "\"\r\n\r\n", sizeof("\"\r\n\r\n") - 1 - 1);
+                                if (!name_end_ptr) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!name_end_ptr"); } else {
+                                    if (p != v->data + 1) *p++ = ',';
+                                    *p++ = '"';
+                                    p = (u_char*)ngx_escape_json(p, name_start_ptr, name_end_ptr - name_start_ptr);
+                                    *p++ = '"';
+                                    *p++ = ':';
+                                    u_char *value_start_ptr = name_end_ptr + sizeof("\"\r\n\r\n") - 1;
+                                    u_char *value_end_ptr = ngx_strstrn(value_start_ptr, (char *)boundary.data, boundary.len - 1);
+                                    if (!value_end_ptr) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!value_end_ptr"); } else {
+                                        *p++ = '"';
+                                        p = (u_char*)ngx_escape_json(p, value_start_ptr, value_end_ptr - value_start_ptr);
+                                        *p++ = '"';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            *p++ = '}';
+            *p = '\0';
+            v->len = p - v->data;
+        } break;
+        case CONTENT_TYPE_URLENCODED: {
+            size_t size = ngx_http_json_vars_size(sizeof("{}\"\":\"\"") + 2, echo_request_body->data, echo_request_body->data + echo_request_body->len);
+            u_char *p = ngx_palloc(r->pool, size);
+            if (!p) return NGX_ERROR;
+            v->data = p;
+            *p++ = '{';
+            p = ngx_http_json_vars_data(p, echo_request_body->data, echo_request_body->data + echo_request_body->len, v->data + 1);
+            *p++ = '}';
+            *p = '\0';
+            v->len = p - v->data;
+            if (v->len >= size) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_var_post_vars: result length %uD exceeded allocated length %uz", (uint32_t)v->len, size);
+                return NGX_ERROR;
+            }
+        } break;
+        case CONTENT_TYPE_JSON: {
+            u_char *p = ngx_palloc(r->pool, echo_request_body->len + 1);
+            if (!p) return NGX_ERROR;
+            v->data = p;
+            p = ngx_copy(p, echo_request_body->data, echo_request_body->len);
+            *p = '\0';
+            v->len = p - v->data;
+        } break;
+        default: ngx_str_set(v, "null");
+    }
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+    return NGX_OK;
+}*/
 
 static ngx_http_variable_t ngx_http_json_variables[] = {
   { ngx_string("json_headers1"),
