@@ -47,6 +47,49 @@ err:
     return NGX_OK;
 }
 
+static size_t ngx_http_json_cookies_size(size_t size, u_char *start, u_char *end) {
+    for (; start < end; start++, size++) {
+        while (start < end && *start == ' ') start++;
+        if (*start == '\\' || *start == '"') size++;
+        else if (*start == ';') size += sizeof("\"\":\"\",") - 1;
+    }
+    return size + (sizeof("\"\":\"\"") - 1);
+}
+
+static u_char *ngx_http_json_cookies_data(u_char *p, u_char *start, u_char *end, u_char *cookies) {
+    while (start < end) {
+        while (start < end && *start == ' ') start++;
+        if (p != cookies) *p++ = ',';
+        *p++ = '"';
+        for (; start < end && *start != '='; *p++ = *start++) if (*start == '\\' || *start == '"') *p++ = '\\';
+        start++; *p++ = '"'; *p++ = ':'; *p++ = '"';
+        for (; start < end && *start != ';'; *p++ = *start++) if (*start == '\\' || *start == '"') *p++ = '\\'; 
+        start++; *p++ = '"';
+    }
+    return p;
+}
+
+static ngx_int_t ngx_http_json_cookies(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+    size_t size = sizeof("{}") - 1;
+    ngx_table_elt_t **h = r->headers_in.cookies.elts;
+    for (ngx_uint_t i = 0; i < r->headers_in.cookies.nelts; i++) size = ngx_http_json_cookies_size(size, h[i]->value.data, h[i]->value.data + h[i]->value.len);
+    u_char *p = ngx_palloc(r->pool, size);
+    if (!p) goto err;
+    v->data = p;
+    *p++ = '{';
+    for (ngx_uint_t i = 0; i < r->headers_in.cookies.nelts; i++) p = ngx_http_json_cookies_data(p, h[i]->value.data, h[i]->value.data + h[i]->value.len, v->data + 1);
+    *p++ = '}';
+    v->len = p - v->data;
+    if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_cookies: result length %l exceeded allocated length %l", v->len, size); goto err; }
+    return NGX_OK;
+err:
+    ngx_str_set(v, "null");
+    return NGX_OK;
+}
+
 static ngx_http_variable_t ngx_http_json_variables[] = {
   { ngx_string("json_headers1"),
     NULL,
@@ -54,13 +97,13 @@ static ngx_http_variable_t ngx_http_json_variables[] = {
     0,
     NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
     0 },
-/*  { ngx_string("json_cookies1"),
+  { ngx_string("json_cookies1"),
     NULL,
     ngx_http_json_cookies,
     0,
     NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
     0 },
-  { ngx_string("json_get_vars1"),
+/*  { ngx_string("json_get_vars1"),
     NULL,
     ngx_http_json_get_vars,
     0,
