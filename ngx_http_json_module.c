@@ -6,20 +6,6 @@
 
 ngx_module_t ngx_http_json_module;
 
-static char *ngx_str_t_to_char(ngx_pool_t *pool, ngx_str_t s) {
-    char *c = ngx_pcalloc(pool, (s.len + 1) * sizeof(char));
-    if (!c) return NULL;
-    ngx_memcpy(c, s.data, s.len);
-    return c;
-}
-
-static ngx_str_t char_to_ngx_str_t(ngx_pool_t *pool, const char *c) {
-    size_t len = ngx_strlen(c);
-    ngx_str_t s = {len, ngx_pnalloc(pool, len * sizeof(char))};
-    if (s.data) ngx_memcpy(s.data, c, len); else s.len = 0;
-    return s;
-}
-
 static ngx_int_t ngx_http_json_loads(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
     v->not_found = 1;
     ngx_http_complex_value_t *cv = (ngx_http_complex_value_t *)data;
@@ -62,13 +48,17 @@ static ngx_int_t ngx_http_json_dumps(ngx_http_request_t *r, ngx_http_variable_va
     ngx_http_variable_value_t *var = ngx_http_get_variable(r, name, ngx_hash_key(name->data, name->len));
     if (!var || !var->data || var->len != sizeof(json_t)) return NGX_OK;
     json_t *json = (json_t *)var->data;
-    for (ngx_uint_t i = 1; json && (i < args->nelts); i++) json = json_object_get(json, ngx_str_t_to_char(r->pool, name[i]));
+    for (ngx_uint_t i = 1; json && (i < args->nelts); i++) {
+        char grant[name[i].len + 1];
+        ngx_memcpy(grant, name[i].data, name[i].len);
+        grant[name[i].len] = '\0';
+        json = json_object_get(json, grant);
+    }
     const char *value = json_string_value(json);
     if (!value) value = json_dumps(json, JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY);
     if (!value) return NGX_OK;
-    ngx_str_t dumps = char_to_ngx_str_t(r->pool, value);
-    v->data = dumps.data;
-    v->len = dumps.len;
+    v->data = (u_char *)value;
+    v->len = ngx_strlen(value);
     v->valid = 1;
     v->no_cacheable = 0;
     v->not_found = 0;
@@ -114,17 +104,17 @@ static ngx_command_t ngx_http_json_commands[] = {
 };
 
 static ngx_http_module_t ngx_http_json_module_ctx = {
-    NULL,                          /* preconfiguration */
-    NULL,                          /* postconfiguration */
+    NULL,                      /* preconfiguration */
+    NULL,                      /* postconfiguration */
 
-    NULL,                          /* create main configuration */
-    NULL,                          /* init main configuration */
+    NULL,                      /* create main configuration */
+    NULL,                      /* init main configuration */
 
-    NULL,                          /* create server configuration */
-    NULL,                          /* merge server configuration */
+    NULL,                      /* create server configuration */
+    NULL,                      /* merge server configuration */
 
-    NULL,                          /* create location configuration */
-    NULL                           /* merge location configuration */
+    NULL,                      /* create location configuration */
+    NULL                       /* merge location configuration */
 };
 
 ngx_module_t ngx_http_json_module = {
