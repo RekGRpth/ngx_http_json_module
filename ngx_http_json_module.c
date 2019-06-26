@@ -6,38 +6,44 @@
 
 ngx_module_t ngx_http_json_module;
 
-static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
-    v->not_found = 1;
-    json_t *json = json_object();
-    if (!json) return NGX_OK;
-    ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (!cln) { json_decref(json); return NGX_OK; }
-    cln->handler = (ngx_pool_cleanup_pt)json_decref;
-    cln->data = json;
+static u_char *ngx_http_json_headers_set(ngx_http_request_t *r, u_char *p, size_t *size) {
+    char first = 1;
+    if (p) *p++ = '{';
     ngx_list_part_t *part = &r->headers_in.headers.part;
     do {
         ngx_table_elt_t *header = part->elts;
         for (ngx_uint_t i = 0; i < part->nelts; i++) {
-            char key[header[i].key.len + 1];
-            ngx_memcpy(key, header[i].key.data, header[i].key.len);
-            key[header[i].key.len] = '\0';
-            json_t *value = json_stringn((const char *)header[i].value.data, header[i].value.len);
-            ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
-            if (!cln) { json_decref(value); return NGX_OK; }
-            cln->handler = (ngx_pool_cleanup_pt)json_decref;
-            cln->data = value;
-            (int)json_object_set(json, key, value);
-//            json_t *json_null(void)
+            if (!p) *size += (sizeof("\"\":\"\",") - 1) + header[i].key.len + header[i].value.len + ngx_escape_json(NULL, header[i].value.data, header[i].value.len); else {
+                if (!first) *p++ = ',';
+                *p++ = '"';
+                p = ngx_copy(p, header[i].key.data, header[i].key.len);
+                *p++ = '"'; *p++ = ':'; *p++ = '"';
+                p = (u_char *)ngx_escape_json(p, header[i].value.data, header[i].value.len);
+                *p++ = '"';
+                first = 0;
+            }
         }
         part = part->next;
     } while (part);
-    const char *value = json_dumps(json, JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY);
-    if (!value) return NGX_OK;
-    v->data = (u_char *)value;
-    v->len = ngx_strlen(value);
+    if (p) *p++ = '}';
+    else p = ngx_palloc(r->pool, *size);
+    return p;
+}
+
+static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
+    v->not_found = 1;
+//    ngx_list_part_t *part = &r->headers_in.headers.part;
+    size_t size = sizeof("{}") - 1 - 1;
+    u_char *p = ngx_http_json_headers_set(r, NULL, &size);
+    if (!p) return NGX_ERROR;
+    v->data = p;
+    p = ngx_http_json_headers_set(r, p, NULL);
+//    *p = '\0';
     v->valid = 1;
     v->no_cacheable = 0;
     v->not_found = 0;
+    v->len = p - v->data;
+    if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_var_headers: result length %l exceeded allocated length %l", v->len, size); return NGX_ERROR; }
     return NGX_OK;
 }
 
