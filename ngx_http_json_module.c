@@ -280,8 +280,9 @@ static ngx_int_t ngx_http_json_loads_handler(ngx_http_request_t *r, ngx_http_var
     ngx_http_complex_value_t *cv = (ngx_http_complex_value_t *)data;
     ngx_str_t value;
     if (ngx_http_complex_value(r, cv, &value) != NGX_OK) return NGX_OK;
-    json_t *json = json_loadb((char *)value.data, value.len, 0, NULL);
-    if (!json) return NGX_OK;
+    json_error_t error;
+    json_t *json = json_loadb((char *)value.data, value.len, JSON_DECODE_ANY, &error);
+    if (!json) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json decode error: %s", error.text); return NGX_OK; }
     ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
     if (!cln) { json_decref(json); return NGX_OK; }
     cln->handler = (ngx_pool_cleanup_pt)json_decref;
@@ -324,7 +325,7 @@ static ngx_int_t ngx_http_json_dumps_handler(ngx_http_request_t *r, ngx_http_var
         json = json_object_get(json, key);
     }
     const char *value = json_string_value(json);
-    if (!value) value = json_dumps(json, JSON_PRESERVE_ORDER | JSON_COMPACT);
+    if (!value) value = json_dumps(json, JSON_PRESERVE_ORDER | JSON_ENCODE_ANY | JSON_COMPACT);
     if (!value) return NGX_OK;
     v->data = (u_char *)value;
     v->len = ngx_strlen(value);
