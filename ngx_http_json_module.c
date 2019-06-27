@@ -324,7 +324,7 @@ static ngx_int_t ngx_http_json_dumps_handler(ngx_http_request_t *r, ngx_http_var
         json = json_object_get(json, key);
     }
     const char *value = json_string_value(json);
-    if (!value) value = json_dumps(json, JSON_SORT_KEYS | JSON_COMPACT | JSON_ENCODE_ANY);
+    if (!value) value = json_dumps(json, JSON_PRESERVE_ORDER | JSON_COMPACT);
     if (!value) return NGX_OK;
     v->data = (u_char *)value;
     v->len = ngx_strlen(value);
