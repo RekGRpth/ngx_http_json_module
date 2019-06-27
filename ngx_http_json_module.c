@@ -472,7 +472,7 @@ static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *co
 }
 
 static ngx_int_t ngx_http_json_var_loads_http_handler(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
-    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_var_loads_http_handler");
+//    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_var_loads_http_handler");
     v->not_found = 1;
     json_t *json = json_object();
     if (!json) return NGX_OK;
