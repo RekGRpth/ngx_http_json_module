@@ -506,6 +506,11 @@ static ngx_int_t ngx_http_json_var_loads_http_handler(ngx_http_request_t *r, ngx
             if (!value) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json decode error: %s", error.text);
         }
         if (!value) continue;
+//        ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
+//        if (!cln) { json_decref(value); continue; }
+//        cln->handler = (ngx_pool_cleanup_pt)json_decref;
+//        cln->data = value;
+//        if (json_object_set(json, key, value)) continue;
         if (json_object_set_new(json, key, value)) continue;
     }
     v->data = (u_char *)json;
