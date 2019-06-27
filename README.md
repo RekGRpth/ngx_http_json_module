@@ -31,7 +31,7 @@ Creates a new variable whose value is a json containing the items listed within 
 Parameters inside the `json_var` block specify a field that should be included in the resulting json.
 Each parameter has to contain two or three arguments - key, command and value.
 The value can contain nginx variables.
-Command may be one of true, false, null, string, object, loads.
+Command may be one of true, false, null, string, integer, real, object, loads.
 
 ### Embedded Variables:
 

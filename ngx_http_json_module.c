@@ -497,6 +497,18 @@ static ngx_int_t ngx_http_json_var_loads_http_handler(ngx_http_request_t *r, ngx
         else if (ngx_strncasecmp(fields[i].command.data, (u_char *)"string", sizeof("string") - 1) == 0) {
             if (ngx_http_complex_value(r, &fields[i].cv, &fields[i].value) != NGX_OK) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_complex_value != NGX_OK"); continue; }
             value = json_stringn((const char *)fields[i].value.data, fields[i].value.len);
+        } else if (ngx_strncasecmp(fields[i].command.data, (u_char *)"integer", sizeof("integer") - 1) == 0) {
+            if (ngx_http_complex_value(r, &fields[i].cv, &fields[i].value) != NGX_OK) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_complex_value != NGX_OK"); continue; }
+            char s[fields[i].value.len + 1];
+            ngx_memcpy(s, fields[i].value.data, fields[i].value.len);
+            s[fields[i].value.len] = '\0';
+            value = json_integer(atol(s));
+        } else if (ngx_strncasecmp(fields[i].command.data, (u_char *)"real", sizeof("real") - 1) == 0) {
+            if (ngx_http_complex_value(r, &fields[i].cv, &fields[i].value) != NGX_OK) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_complex_value != NGX_OK"); continue; }
+            char s[fields[i].value.len + 1];
+            ngx_memcpy(s, fields[i].value.data, fields[i].value.len);
+            s[fields[i].value.len] = '\0';
+            value = json_real(atof(s));
         } else if (ngx_strncasecmp(fields[i].command.data, (u_char *)"object", sizeof("object") - 1) == 0) {
             if (fields[i].value.data[0] != '$') { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "fields[i].value.data[0] != '$'"); continue; }
             ngx_str_t var = fields[i].value;
@@ -537,6 +549,8 @@ static char *ngx_http_json_var_loads_conf_handler(ngx_conf_t *cf, ngx_command_t 
     field->command = value[1];
     field->value = value[2];
     if ((ngx_strncasecmp(value[1].data, (u_char *)"string", sizeof("string") - 1) == 0)
+     || (ngx_strncasecmp(value[1].data, (u_char *)"integer", sizeof("integer") - 1) == 0)
+     || (ngx_strncasecmp(value[1].data, (u_char *)"real", sizeof("real") - 1) == 0)
      || (ngx_strncasecmp(value[1].data, (u_char *)"loads", sizeof("loads") - 1) == 0)) {
         ngx_http_compile_complex_value_t ccv = {ctx->cf, &value[2], &field->cv, 0, 0, 0};
         if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return NGX_CONF_ERROR;
