@@ -505,15 +505,15 @@ static ngx_http_module_t ngx_http_json_module_ctx = {
 
 ngx_module_t ngx_http_json_module = {
     NGX_MODULE_V1,
-    &ngx_http_json_module_ctx,   /* module context */
-    ngx_http_json_commands,      /* module directives */
-    NGX_HTTP_MODULE,             /* module type */
-    NULL,                        /* init master */
-    NULL,                        /* init module */
-    NULL,                        /* init process */
-    NULL,                        /* init thread */
-    NULL,                        /* exit thread */
-    NULL,                        /* exit process */
-    NULL,                        /* exit master */
+    .ctx = &ngx_http_json_module_ctx,
+    .commands = ngx_http_json_commands,
+    .type = NGX_HTTP_MODULE,
+    .init_master = NULL,
+    .init_module = NULL,
+    .init_process = NULL,
+    .init_thread = NULL,
+    .exit_thread = NULL,
+    .exit_process = NULL,
+    .exit_master = NULL,
     NGX_MODULE_V1_PADDING
 };
