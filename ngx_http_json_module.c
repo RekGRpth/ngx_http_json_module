@@ -47,6 +47,26 @@ err:
     return NGX_OK;
 }
 
+static ngx_int_t ngx_http_json_loads(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
+    v->not_found = 1;
+    ngx_str_t *variable = (ngx_str_t *)data;
+    ngx_http_variable_value_t *value = ngx_http_get_variable(r, variable, ngx_hash_key(variable->data, variable->len));
+    if (!value || !value->data) return NGX_OK;
+    json_error_t error;
+    json_t *json = json_loadb((char *)value->data, value->len, JSON_DECODE_ANY, &error);
+    if (!json) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json decode error: %s", error.text); return NGX_OK; }
+    ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
+    if (!cln) { json_decref(json); return NGX_OK; }
+    cln->handler = (ngx_pool_cleanup_pt)json_decref;
+    cln->data = json;
+    v->data = (u_char *)json;
+    v->len = sizeof(json_t);
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+    return NGX_OK;
+}
+
 static size_t ngx_http_json_cookies_dumps_size(u_char *start, u_char *end) {
     size_t size;
     for (size = 0; start < end; start++, size++) {
@@ -197,7 +217,7 @@ static ngx_int_t ngx_http_json_post_vars_dumps(ngx_http_request_t *r, ngx_http_v
     v->not_found = 0;
     ngx_str_t echo_request_body_var = ngx_string("echo_request_body");
     ngx_http_variable_value_t *echo_request_body = ngx_http_get_variable(r, &echo_request_body_var, ngx_hash_key(echo_request_body_var.data, echo_request_body_var.len));
-    if (echo_request_body->data && r->headers_in.content_type) {
+    if (echo_request_body && echo_request_body->data && r->headers_in.content_type) {
         if (ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/x-www-form-urlencoded", sizeof("application/x-www-form-urlencoded") - 1) == 0) {
             size_t size = ngx_http_json_vars_size(echo_request_body->data, echo_request_body->data + echo_request_body->len);
             u_char *p = ngx_palloc(r->pool, size);
@@ -234,39 +254,58 @@ err:
 }
 
 static ngx_http_variable_t ngx_http_json_variables[] = {
-  { ngx_string("json_headers_dumps"),
-    NULL,
-    ngx_http_json_headers_dumps,
-    0,
-    NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
-    0 },
-  { ngx_string("json_cookies_dumps"),
-    NULL,
-    ngx_http_json_cookies_dumps,
-    0,
-    NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
-    0 },
-  { ngx_string("json_get_vars_dumps"),
-    NULL,
-    ngx_http_json_get_vars_dumps,
-    0,
-    NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
-    0 },
-  { ngx_string("json_post_vars_dumps"),
-    NULL,
-    ngx_http_json_post_vars_dumps,
-    0,
-    NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
-    0 },
-  { ngx_null_string,
-    NULL,
-    NULL,
-    0,
-    0,
-    0 }
+  { .name = ngx_string("json_headers_dumps"),
+    .set_handler = NULL,
+    .get_handler = ngx_http_json_headers_dumps,
+    .data = 0,
+    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .index = 0 },
+  { .name = ngx_string("json_headers_loads"),
+    .set_handler = NULL,
+    .get_handler = ngx_http_json_loads,
+    .data = (uintptr_t)&(ngx_str_t)ngx_string("json_headers_dumps"),
+    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .index = 0 },
+  { .name = ngx_string("json_cookies_dumps"),
+    .set_handler = NULL,
+    .get_handler = ngx_http_json_cookies_dumps,
+    .data = 0,
+    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .index = 0 },
+  { .name = ngx_string("json_cookies_loads"),
+    .set_handler = NULL,
+    .get_handler = ngx_http_json_loads,
+    .data = (uintptr_t)&(ngx_str_t)ngx_string("json_cookies_dumps"),
+    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .index = 0 },
+  { .name = ngx_string("json_get_vars_dumps"),
+    .set_handler = NULL,
+    .get_handler = ngx_http_json_get_vars_dumps,
+    .data = 0,
+    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .index = 0 },
+  { .name = ngx_string("json_get_vars_loads"),
+    .set_handler = NULL,
+    .get_handler = ngx_http_json_loads,
+    .data = (uintptr_t)&(ngx_str_t)ngx_string("json_get_vars_dumps"),
+    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .index = 0 },
+  { .name = ngx_string("json_post_vars_dumps"),
+    .set_handler = NULL,
+    .get_handler = ngx_http_json_post_vars_dumps,
+    .data = 0,
+    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .index = 0 },
+  { .name = ngx_string("json_post_vars_loads"),
+    .set_handler = NULL,
+    .get_handler = ngx_http_json_loads,
+    .data = (uintptr_t)&(ngx_str_t)ngx_string("json_post_vars_dumps"),
+    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .index = 0 },
+    ngx_http_null_variable
 };
 
-static ngx_int_t ngx_http_json_add_variables(ngx_conf_t *cf) {
+static ngx_int_t ngx_http_json_preconfiguration(ngx_conf_t *cf) {
     for (ngx_http_variable_t *v = ngx_http_json_variables; v->name.len; v++) {
         ngx_http_variable_t *var = ngx_http_add_variable(cf, &v->name, v->flags);
         if (!var) return NGX_ERROR;
@@ -432,39 +471,36 @@ static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *co
 }
 
 static ngx_command_t ngx_http_json_commands[] = {
-  { ngx_string("json_loads"),
-    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE2,
-    ngx_http_json_loads_conf,
-    NGX_HTTP_LOC_CONF_OFFSET,
-    0,
-    NULL },
-  { ngx_string("json_dumps"),
-    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_2MORE,
-    ngx_http_json_dumps_conf,
-    NGX_HTTP_LOC_CONF_OFFSET,
-    0,
-    NULL },
-  { ngx_string("json_var"),
-    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_BLOCK|NGX_CONF_TAKE1,
-    ngx_http_json_var_conf,
-    0,
-    0,
-    NULL },
+  { .name = ngx_string("json_loads"),
+    .type = NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE2,
+    .set = ngx_http_json_loads_conf,
+    .conf = NGX_HTTP_LOC_CONF_OFFSET,
+    .offset = 0,
+    .post = NULL },
+  { .name = ngx_string("json_dumps"),
+    .type = NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_2MORE,
+    .set = ngx_http_json_dumps_conf,
+    .conf = NGX_HTTP_LOC_CONF_OFFSET,
+    .offset = 0,
+    .post = NULL },
+  { .name = ngx_string("json_var"),
+    .type = NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_BLOCK|NGX_CONF_TAKE1,
+    .set = ngx_http_json_var_conf,
+    .conf = 0,
+    .offset = 0,
+    .post = NULL },
     ngx_null_command
 };
 
 static ngx_http_module_t ngx_http_json_module_ctx = {
-    ngx_http_json_add_variables, /* preconfiguration */
-    NULL,                        /* postconfiguration */
-
-    NULL,                        /* create main configuration */
-    NULL,                        /* init main configuration */
-
-    NULL,                        /* create server configuration */
-    NULL,                        /* merge server configuration */
-
-    NULL,                        /* create location configuration */
-    NULL                         /* merge location configuration */
+    .preconfiguration = ngx_http_json_preconfiguration,
+    .postconfiguration = NULL,
+    .create_main_conf = NULL,
+    .init_main_conf = NULL,
+    .create_srv_conf = NULL,
+    .merge_srv_conf = NULL,
+    .create_loc_conf = NULL,
+    .merge_loc_conf = NULL
 };
 
 ngx_module_t ngx_http_json_module = {
