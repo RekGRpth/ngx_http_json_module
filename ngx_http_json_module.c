@@ -24,7 +24,7 @@ static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_
     v->not_found = 0;
     size_t size = sizeof("{}") - 1;
     ngx_list_part_t *part = &r->headers_in.headers.part;
-    for (ngx_table_elt_t *header = part->elts; part; part = part->next) for (ngx_uint_t i = 0; i < part->nelts; i++) size += (sizeof("\"\":\"\",") - 1) + header[i].key.len + header[i].value.len + ngx_escape_json(NULL, header[i].value.data, header[i].value.len); 
+    for (ngx_table_elt_t *header = part->elts; part; part = part->next) for (ngx_uint_t i = 0; i < part->nelts; i++) size += (sizeof("\"\":\"\",") - 1) + header[i].key.len + header[i].value.len + ngx_escape_json(NULL, header[i].value.data, header[i].value.len);
     u_char *p = ngx_palloc(r->pool, size);
     if (!p) goto err;
     v->data = p;
