@@ -19,6 +19,10 @@ typedef struct {
     ngx_array_t *fields; // of ngx_http_json_var_field_t
 } ngx_http_json_var_ctx_t;
 
+static void ngx_http_json_json_object_clear(json_t *json) {
+    (int)json_object_clear(json);
+}
+
 static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
     v->valid = 1;
     v->no_cacheable = 0;
@@ -57,8 +61,8 @@ static ngx_int_t ngx_http_json_loads(ngx_http_request_t *r, ngx_http_variable_va
     json_t *json = json_loadb((char *)value->data, value->len, JSON_DECODE_ANY, &error);
     if (!json) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json decode error: %s", error.text); return NGX_OK; }
     ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (!cln) { json_decref(json); return NGX_OK; }
-    cln->handler = (ngx_pool_cleanup_pt)json_decref;
+    if (!cln) { ngx_http_json_json_object_clear(json); return NGX_OK; }
+    cln->handler = (ngx_pool_cleanup_pt)ngx_http_json_json_object_clear;
     cln->data = json;
     v->data = (u_char *)json;
     v->len = sizeof(json_t);
@@ -324,8 +328,8 @@ static ngx_int_t ngx_http_json_loads_handler(ngx_http_request_t *r, ngx_http_var
     json_t *json = json_loadb((char *)value.data, value.len, JSON_DECODE_ANY, &error);
     if (!json) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json decode error: %s", error.text); return NGX_OK; }
     ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (!cln) { json_decref(json); return NGX_OK; }
-    cln->handler = (ngx_pool_cleanup_pt)json_decref;
+    if (!cln) { ngx_http_json_json_object_clear(json); return NGX_OK; }
+    cln->handler = (ngx_pool_cleanup_pt)ngx_http_json_json_object_clear;
     cln->data = json;
     v->data = (u_char *)json;
     v->len = sizeof(json_t);
@@ -477,8 +481,8 @@ static ngx_int_t ngx_http_json_var_loads_http_handler(ngx_http_request_t *r, ngx
     json_t *json = json_object();
     if (!json) return NGX_OK;
     ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (!cln) { json_decref(json); return NGX_OK; }
-    cln->handler = (ngx_pool_cleanup_pt)json_decref;
+    if (!cln) { ngx_http_json_json_object_clear(json); return NGX_OK; }
+    cln->handler = (ngx_pool_cleanup_pt)ngx_http_json_json_object_clear;
     cln->data = json;
     ngx_array_t *ctx = (ngx_array_t *)data;
     ngx_http_json_var_field_t *fields = ctx->elts;
@@ -505,15 +509,16 @@ static ngx_int_t ngx_http_json_var_loads_http_handler(ngx_http_request_t *r, ngx
             if (ngx_http_complex_value(r, &fields[i].cv, &fields[i].value) != NGX_OK) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_complex_value != NGX_OK"); continue; }
             json_error_t error;
             value = json_loadb((char *)fields[i].value.data, fields[i].value.len, JSON_DECODE_ANY, &error);
-            if (!value) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json decode error: %s", error.text);
+            if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json decode error: %s", error.text); continue; }
+//            value = json_incref(value);
         }
-        if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!value"); continue; }
+//        if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!value"); continue; }
 //        ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
-//        if (!cln) { json_decref(value); continue; }
-//        cln->handler = (ngx_pool_cleanup_pt)json_decref;
+//        if (!cln) { ngx_http_json_json_object_clear(value); continue; }
+//        cln->handler = (ngx_pool_cleanup_pt)ngx_http_json_json_object_clear;
 //        cln->data = value;
-//        if (json_object_set(json, key, value)) continue;
-        if (json_object_set_new(json, key, value)) continue;
+//        if (json_object_set(json, key, value)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json_object_set_new"); continue; }
+        if (json_object_set_new(json, key, value)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json_object_set_new"); continue; }
     }
     v->data = (u_char *)json;
     v->len = sizeof(json_t);
