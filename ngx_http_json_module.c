@@ -502,8 +502,8 @@ static ngx_int_t ngx_http_json_var_loads_http_handler(ngx_http_request_t *r, ngx
         } else if (ngx_strncasecmp(fields[i].command.data, (u_char *)"loads", sizeof("loads") - 1) == 0)  {
             if (ngx_http_complex_value(r, &fields[i].cv, &fields[i].value) != NGX_OK) continue;
             json_error_t error;
-            json = json_loadb((char *)fields[i].value.data, fields[i].value.len, JSON_DECODE_ANY, &error);
-            if (!json) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json decode error: %s", error.text); continue; }
+            value = json_loadb((char *)fields[i].value.data, fields[i].value.len, JSON_DECODE_ANY, &error);
+            if (!value) ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json decode error: %s", error.text);
         }
         if (!value) continue;
         if (json_object_set_new(json, key, value)) continue;
