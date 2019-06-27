@@ -523,7 +523,9 @@ static ngx_int_t ngx_http_json_var_loads_http_handler(ngx_http_request_t *r, ngx
 
 static char *ngx_http_json_var_loads_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_str_t *value = cf->args->elts;
-    if ((ngx_strncasecmp(value[1].data, (u_char *)"true", sizeof("true") - 1) == 0) || (ngx_strncasecmp(value[1].data, (u_char *)"false", sizeof("false") - 1) == 0) || (ngx_strncasecmp(value[1].data, (u_char *)"null", sizeof("null") - 1) == 0)) {
+    if ((ngx_strncasecmp(value[1].data, (u_char *)"true", sizeof("true") - 1) == 0)
+     || (ngx_strncasecmp(value[1].data, (u_char *)"false", sizeof("false") - 1) == 0)
+     || (ngx_strncasecmp(value[1].data, (u_char *)"null", sizeof("null") - 1) == 0)) {
         if (cf->args->nelts != 2) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid args count %l for command %V", cf->args->nelts, &value[1]); return NGX_CONF_ERROR; }
     } else {
         if (cf->args->nelts != 3) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid args count %l for command %V", cf->args->nelts, &value[1]); return NGX_CONF_ERROR; }
@@ -534,7 +536,8 @@ static char *ngx_http_json_var_loads_conf_handler(ngx_conf_t *cf, ngx_command_t 
     field->name = value[0];
     field->command = value[1];
     field->value = value[2];
-    if ((ngx_strncasecmp(value[1].data, (u_char *)"string", sizeof("string") - 1) == 0) || (ngx_strncasecmp(value[1].data, (u_char *)"loads", sizeof("loads") - 1) == 0)) {
+    if ((ngx_strncasecmp(value[1].data, (u_char *)"string", sizeof("string") - 1) == 0)
+     || (ngx_strncasecmp(value[1].data, (u_char *)"loads", sizeof("loads") - 1) == 0)) {
         ngx_http_compile_complex_value_t ccv = {ctx->cf, &value[2], &field->cv, 0, 0, 0};
         if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return NGX_CONF_ERROR;
     }
