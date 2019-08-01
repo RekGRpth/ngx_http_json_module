@@ -182,7 +182,7 @@ err:
     return NGX_OK;
 }
 
-static u_char *ngx_http_json_post_vars_data(u_char *p, ngx_pool_t *pool, u_char *content_type, u_char *echo_request_body, u_char *body) {
+static u_char *ngx_http_json_post_vars_data(u_char *p, ngx_pool_t *pool, u_char *content_type, u_char *request_body, u_char *body) {
     u_char *mime_type_end_ptr = (u_char *)ngx_strchr(content_type, ';');
     if (!mime_type_end_ptr) return NULL;
     u_char *boundary_start_ptr = ngx_strstrn(mime_type_end_ptr, "boundary=", sizeof("boundary=") - 1 - 1);
@@ -195,7 +195,7 @@ static u_char *ngx_http_json_post_vars_data(u_char *p, ngx_pool_t *pool, u_char 
     (void) ngx_cpystrn(boundary.data + 4, boundary_start_ptr, boundary_end_ptr - boundary_start_ptr + 1);
     boundary.data[0] = '\r'; boundary.data[1] = '\n'; boundary.data[2] = '-'; boundary.data[3] = '-'; boundary.data[boundary.len] = '\0';
     for (
-        u_char *s = echo_request_body, *name_start_ptr;
+        u_char *s = request_body, *name_start_ptr;
         (name_start_ptr = ngx_strstrn(s, "\r\nContent-Disposition: form-data; name=\"", sizeof("\r\nContent-Disposition: form-data; name=\"") - 1 - 1)) != NULL;
         s += boundary.len
     ) {
@@ -216,41 +216,77 @@ static u_char *ngx_http_json_post_vars_data(u_char *p, ngx_pool_t *pool, u_char 
     return p;
 }
 
+static void ngx_http_json_read_client_request_body_post_handler(ngx_http_request_t *r) {}
+
+static ngx_buf_t *ngx_http_json_read_request_body_to_buffer(ngx_http_request_t *r) {
+    ngx_buf_t *buf = ngx_create_temp_buf(r->pool, r->headers_in.content_length_n + 1);
+    if (!buf) return buf;
+    buf->memory = 1;
+    buf->temporary = 0;
+    ngx_memset(buf->start, '\0', r->headers_in.content_length_n + 1);
+    if (!r->request_body) {
+        r->request_body_in_single_buf = 0;
+        r->request_body_in_persistent_file = 1;
+        r->request_body_in_clean_file = 0;
+        r->request_body_file_log_level = 0;
+        if (ngx_http_read_client_request_body(r, ngx_http_json_read_client_request_body_post_handler) >= NGX_HTTP_SPECIAL_RESPONSE) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_read_client_request_body >= NGX_HTTP_SPECIAL_RESPONSE"); return NULL; }
+    }
+    for (ngx_chain_t *chain = r->request_body->bufs; chain && chain->buf; chain = chain->next) {
+        off_t len = ngx_buf_size(chain->buf);
+        if (len >= r->headers_in.content_length_n) {
+            buf->start = buf->pos;
+            buf->last = buf->pos;
+            len = r->headers_in.content_length_n;
+        }
+        if (chain->buf->in_file) {
+            ssize_t n = ngx_read_file(chain->buf->file, buf->start, len, 0);
+            if (n == NGX_FILE_ERROR) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_read_request_body_to_buffer: cannot read file with request body"); return NULL; }
+            buf->last = buf->last + len;
+            ngx_delete_file(chain->buf->file->name.data);
+            chain->buf->file->fd = NGX_INVALID_FILE;
+        } else {
+            buf->last = ngx_copy(buf->start, chain->buf->pos, len);
+        }
+        buf->start = buf->last;
+    }
+    return buf;
+}
+
 static ngx_int_t ngx_http_json_post_vars(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
     v->valid = 1;
     v->no_cacheable = 0;
     v->not_found = 0;
-    ngx_str_t echo_request_body_var = ngx_string("echo_request_body");
-    ngx_http_variable_value_t *echo_request_body = ngx_http_get_variable(r, &echo_request_body_var, ngx_hash_key(echo_request_body_var.data, echo_request_body_var.len));
-    if (echo_request_body && echo_request_body->data && r->headers_in.content_type) {
-        if (ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/x-www-form-urlencoded", sizeof("application/x-www-form-urlencoded") - 1) == 0) {
-            size_t size = ngx_http_json_vars_size(echo_request_body->data, echo_request_body->data + echo_request_body->len);
-            u_char *p = ngx_palloc(r->pool, size);
-            if (!p) goto err;
-            v->data = p;
-            *p++ = '{';
-            p = ngx_http_json_vars_data(p, echo_request_body->data, echo_request_body->data + echo_request_body->len, v->data + 1);
-            *p++ = '}';
-            v->len = p - v->data;
-            if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_post_vars: result length %l exceeded allocated length %l", v->len, size); goto err; }
-        } else if (ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/json", sizeof("application/json") - 1) == 0) {
-            u_char *p = ngx_palloc(r->pool, echo_request_body->len);
-            if (!p) goto err;
-            v->data = p;
-            p = ngx_copy(p, echo_request_body->data, echo_request_body->len);
-            v->len = p - v->data;
-            if (v->len > echo_request_body->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_post_vars: result length %l exceeded allocated length %l", v->len, echo_request_body->len); goto err; }
-        } else if (ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"multipart/form-data", sizeof("multipart/form-data") - 1) == 0) {
-            u_char *p = ngx_palloc(r->pool, echo_request_body->len);
-            if (!p) goto err;
-            v->data = p;
-            *p++ = '{';
-            p = ngx_http_json_post_vars_data(p, r->pool, r->headers_in.content_type->value.data, echo_request_body->data, v->data + 1);
-            if (!p) goto err;
-            *p++ = '}';
-            v->len = p - v->data;
-            if (v->len > echo_request_body->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_post_vars: result length %l exceeded allocated length %l", v->len, echo_request_body->len); goto err; }
-        } else goto err;
+    if (r->headers_in.content_length_n <= 0) goto err;
+    ngx_buf_t *buf = ngx_http_json_read_request_body_to_buffer(r);
+    if (!buf) goto err;
+    if (!r->headers_in.content_type) goto err;
+    if (ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/x-www-form-urlencoded", sizeof("application/x-www-form-urlencoded") - 1) == 0) {
+        size_t size = ngx_http_json_vars_size(buf->pos, buf->last);
+        u_char *p = ngx_palloc(r->pool, size);
+        if (!p) goto err;
+        v->data = p;
+        *p++ = '{';
+        p = ngx_http_json_vars_data(p, buf->pos, buf->last, v->data + 1);
+        *p++ = '}';
+        v->len = p - v->data;
+        if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_post_vars: result length %l exceeded allocated length %l", v->len, size); goto err; }
+    } else if (ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/json", sizeof("application/json") - 1) == 0) {
+        u_char *p = ngx_palloc(r->pool, ngx_buf_size(buf));
+        if (!p) goto err;
+        v->data = p;
+        p = ngx_copy(p, buf->pos, ngx_buf_size(buf));
+        v->len = p - v->data;
+        if (v->len > ngx_buf_size(buf)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_post_vars: result length %l exceeded allocated length %l", v->len, ngx_buf_size(buf)); goto err; }
+    } else if (ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"multipart/form-data", sizeof("multipart/form-data") - 1) == 0) {
+        u_char *p = ngx_palloc(r->pool, ngx_buf_size(buf));
+        if (!p) goto err;
+        v->data = p;
+        *p++ = '{';
+        p = ngx_http_json_post_vars_data(p, r->pool, r->headers_in.content_type->value.data, buf->pos, v->data + 1);
+        if (!p) goto err;
+        *p++ = '}';
+        v->len = p - v->data;
+        if (v->len > ngx_buf_size(buf)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_post_vars: result length %l exceeded allocated length %l", v->len, ngx_buf_size(buf)); goto err; }
     } else goto err;
     return NGX_OK;
 err:
