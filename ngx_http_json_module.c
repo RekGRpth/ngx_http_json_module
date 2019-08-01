@@ -216,21 +216,13 @@ static u_char *ngx_http_json_post_vars_data(u_char *p, ngx_pool_t *pool, u_char 
     return p;
 }
 
-static void ngx_http_json_read_client_request_body_post_handler(ngx_http_request_t *r) {}
-
 static ngx_buf_t *ngx_http_json_read_request_body_to_buffer(ngx_http_request_t *r) {
+    if (!r->request_body) return NULL;
     ngx_buf_t *buf = ngx_create_temp_buf(r->pool, r->headers_in.content_length_n + 1);
     if (!buf) return buf;
     buf->memory = 1;
     buf->temporary = 0;
     ngx_memset(buf->start, '\0', r->headers_in.content_length_n + 1);
-    if (!r->request_body) {
-        r->request_body_in_single_buf = 0;
-        r->request_body_in_persistent_file = 1;
-        r->request_body_in_clean_file = 0;
-        r->request_body_file_log_level = 0;
-        if (ngx_http_read_client_request_body(r, ngx_http_json_read_client_request_body_post_handler) >= NGX_HTTP_SPECIAL_RESPONSE) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_read_client_request_body >= NGX_HTTP_SPECIAL_RESPONSE"); return NULL; }
-    }
     for (ngx_chain_t *chain = r->request_body->bufs; chain && chain->buf; chain = chain->next) {
         off_t len = ngx_buf_size(chain->buf);
         if (len >= r->headers_in.content_length_n) {
