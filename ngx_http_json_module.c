@@ -192,7 +192,7 @@ static u_char *ngx_http_json_post_vars_data(u_char *p, ngx_pool_t *pool, u_char 
     if (boundary_end_ptr == boundary_start_ptr) return NULL;
     ngx_str_t boundary = {boundary_end_ptr - boundary_start_ptr + 4, ngx_palloc(pool, boundary_end_ptr - boundary_start_ptr + 4 + 1)};
     if (!boundary.data) return NULL;
-    (void) ngx_cpystrn(boundary.data + 4, boundary_start_ptr, boundary_end_ptr - boundary_start_ptr + 1);
+    ngx_cpystrn(boundary.data + 4, boundary_start_ptr, boundary_end_ptr - boundary_start_ptr + 1);
     boundary.data[0] = '\r'; boundary.data[1] = '\n'; boundary.data[2] = '-'; boundary.data[3] = '-'; boundary.data[boundary.len] = '\0';
     for (
         u_char *s = request_body, *name_start_ptr;
