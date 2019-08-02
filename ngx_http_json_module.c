@@ -130,12 +130,16 @@ static size_t ngx_http_json_vars_size(u_char *start, u_char *end) {
         case '%': { \
             start++; \
             c = *start++; \
-            if (c >= 0x30) c -= 0x30; \
-            if (c >= 0x10) c -= 0x07; \
+            if (!isxdigit(c)) break; \
+            if (c < 'A') c -= '0'; \
+            else if(c < 'a') c -= 'A' - 10; \
+            else c -= 'a' - 10; \
             *p = (c << 4); \
             c = *start++; \
-            if (c >= 0x30) c -= 0x30; \
-            if (c >= 0x10) c -= 0x07; \
+            if (!isxdigit(c)) break; \
+            if (c < 'A') c -= '0'; \
+            else if(c < 'a') c -= 'A' - 10; \
+            else c -= 'a' - 10; \
             *p += c; \
             c = *p; \
         } break; \
