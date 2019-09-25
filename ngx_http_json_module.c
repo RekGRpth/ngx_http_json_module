@@ -28,20 +28,25 @@ static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_
     v->no_cacheable = 0;
     v->not_found = 0;
     size_t size = sizeof("{}") - 1;
-    ngx_list_part_t *part = &r->headers_in.headers.part;
-    for (ngx_table_elt_t *header = part->elts; part; part = part->next) for (ngx_uint_t i = 0; i < part->nelts; i++) size += (sizeof("\"\":\"\",") - 1) + header[i].key.len + header[i].value.len + ngx_escape_json(NULL, header[i].value.data, header[i].value.len);
+    for (ngx_list_part_t *part = &r->headers_in.headers.part; part; part = part->next) {
+        ngx_table_elt_t *header = part->elts;
+        for (ngx_uint_t i = 0; i < part->nelts; i++) size += (sizeof("\"\":\"\",") - 1) + header[i].key.len + header[i].value.len + ngx_escape_json(NULL, header[i].value.data, header[i].value.len);
+    }
     u_char *p = ngx_palloc(r->pool, size);
     if (!p) goto err;
     v->data = p;
     *p++ = '{';
-    part = &r->headers_in.headers.part;
-    for (ngx_table_elt_t *header = part->elts; part; part = part->next) for (ngx_uint_t i = 0; i < part->nelts; i++) {
-        if (p != v->data + 1) *p++ = ',';
-        *p++ = '"';
-        p = ngx_copy(p, header[i].key.data, header[i].key.len);
-        *p++ = '"'; *p++ = ':'; *p++ = '"';
-        p = (u_char *)ngx_escape_json(p, header[i].value.data, header[i].value.len);
-        *p++ = '"';
+    for (ngx_list_part_t *part = &r->headers_in.headers.part; part; part = part->next) {
+        ngx_table_elt_t *header = part->elts;
+        for (ngx_uint_t i = 0; i < part->nelts; i++) {
+            ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "header[%i] = %V:%V", i, &header[i].key, &header[i].value);
+            if (p != v->data + 1) *p++ = ',';
+            *p++ = '"';
+            p = ngx_copy(p, header[i].key.data, header[i].key.len);
+            *p++ = '"'; *p++ = ':'; *p++ = '"';
+            p = (u_char *)ngx_escape_json(p, header[i].value.data, header[i].value.len);
+            *p++ = '"';
+        }
     }
     *p++ = '}';
     v->len = p - v->data;
