@@ -456,11 +456,9 @@ static ngx_int_t ngx_http_json_var_http_handler(ngx_http_request_t *r, ngx_http_
     if (!p) return NGX_ERROR;
     v->data = p;
     *p++ = '{';
-    ngx_flag_t f = 0;
     for (ngx_uint_t i = 0; i < ctx->nelts; i++) {
         if (!fields[i].value.len) continue;
-        if (f) *p++ = ',';
-        f = 1;
+        if (p != v->data + 1) *p++ = ',';
         *p++ = '"';
         p = ngx_copy(p, fields[i].name.data, fields[i].name.len);
         *p++ = '"';
