@@ -30,7 +30,7 @@ static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_
     size_t size = 0;
     for (ngx_list_part_t *part = &r->headers_in.headers.part; part; part = part->next) {
         ngx_table_elt_t *header = part->elts;
-        for (ngx_uint_t i = 0; i < part->nelts; i++) size += (sizeof("\"\":\"\",") - 1) + header[i].key.len + header[i].value.len + ngx_escape_json(NULL, header[i].value.data, header[i].value.len);
+        for (ngx_uint_t i = 0; i < part->nelts; i++) if (header[i].value.len) size += (sizeof("\"\":\"\",") - 1) + header[i].key.len + header[i].value.len + ngx_escape_json(NULL, header[i].value.data, header[i].value.len);
     }
     if (!size) goto err;
     size += sizeof("{}") - 1;
@@ -40,7 +40,7 @@ static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_
     *p++ = '{';
     for (ngx_list_part_t *part = &r->headers_in.headers.part; part; part = part->next) {
         ngx_table_elt_t *header = part->elts;
-        for (ngx_uint_t i = 0; i < part->nelts; i++) {
+        for (ngx_uint_t i = 0; i < part->nelts; i++) if (header[i].value.len) {
             ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "header[%i] = %V:%V", i, &header[i].key, &header[i].value);
             if (p != v->data + 1) *p++ = ',';
             *p++ = '"';
