@@ -382,16 +382,16 @@ static ngx_int_t ngx_http_json_loads_handler(ngx_http_request_t *r, ngx_http_var
 }
 
 static char *ngx_http_json_loads_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_str_t *value = cf->args->elts;
-    if (value[1].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &value[1]); return NGX_CONF_ERROR; }
-    value[1].len--;
-    value[1].data++;
-    ngx_http_variable_t *v = ngx_http_add_variable(cf, &value[1], NGX_HTTP_VAR_CHANGEABLE);
+    ngx_str_t *elts = cf->args->elts;
+    if (elts[1].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &elts[1]); return NGX_CONF_ERROR; }
+    elts[1].len--;
+    elts[1].data++;
+    ngx_http_variable_t *v = ngx_http_add_variable(cf, &elts[1], NGX_HTTP_VAR_CHANGEABLE);
     if (!v) return NGX_CONF_ERROR;
     v->get_handler = ngx_http_json_loads_handler;
     ngx_http_complex_value_t *cv = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
     if (!cv) return NGX_CONF_ERROR;
-    ngx_http_compile_complex_value_t ccv = {cf, &value[2], cv, 0, 0, 0};
+    ngx_http_compile_complex_value_t ccv = {cf, &elts[2], cv, 0, 0, 0};
     if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return NGX_CONF_ERROR;
     v->data = (uintptr_t)cv;
     return NGX_CONF_OK;
@@ -422,14 +422,14 @@ static ngx_int_t ngx_http_json_dumps_handler(ngx_http_request_t *r, ngx_http_var
 }
 
 static char *ngx_http_json_dumps_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_str_t *value = cf->args->elts;
-    if (value[2].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &value[2]); return NGX_CONF_ERROR; }
-    value[2].len--;
-    value[2].data++;
-    if (value[1].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &value[1]); return NGX_CONF_ERROR; }
-    value[1].len--;
-    value[1].data++;
-    ngx_http_variable_t *v = ngx_http_add_variable(cf, &value[1], NGX_HTTP_VAR_CHANGEABLE);
+    ngx_str_t *elts = cf->args->elts;
+    if (elts[2].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &elts[2]); return NGX_CONF_ERROR; }
+    elts[2].len--;
+    elts[2].data++;
+    if (elts[1].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &elts[1]); return NGX_CONF_ERROR; }
+    elts[1].len--;
+    elts[1].data++;
+    ngx_http_variable_t *v = ngx_http_add_variable(cf, &elts[1], NGX_HTTP_VAR_CHANGEABLE);
     if (!v) return NGX_CONF_ERROR;
     v->get_handler = ngx_http_json_dumps_handler;
     ngx_array_t *args = ngx_array_create(cf->pool, cf->args->nelts - 2, sizeof(ngx_str_t));
@@ -437,7 +437,7 @@ static char *ngx_http_json_dumps_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *
     for (ngx_uint_t i = 2; i < cf->args->nelts; i++) {
         ngx_str_t *s = ngx_array_push(args);
         if (!s) return NGX_CONF_ERROR;
-        *s = value[i];
+        *s = elts[i];
     }
     v->data = (uintptr_t)args;
     return NGX_CONF_OK;
@@ -485,20 +485,20 @@ static ngx_int_t ngx_http_json_var_http_handler(ngx_http_request_t *r, ngx_http_
 }
 
 static char *ngx_http_json_var_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_str_t *value = cf->args->elts;
-    if (cf->args->nelts != 2) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid args count %l for command %V", cf->args->nelts, value); return NGX_CONF_ERROR; }
+    ngx_str_t *elts = cf->args->elts;
+    if (cf->args->nelts != 2) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid args count %l for command %V", cf->args->nelts, elts); return NGX_CONF_ERROR; }
     ngx_http_json_var_ctx_t *ctx = cf->ctx;
     ngx_http_json_var_field_t *field = ngx_array_push(ctx->fields);
     if (!field) return NGX_CONF_ERROR;
-    ngx_http_compile_complex_value_t ccv = {ctx->cf, &value[1], &field->cv, 0, 0, 0};
+    ngx_http_compile_complex_value_t ccv = {ctx->cf, &elts[1], &field->cv, 0, 0, 0};
     if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return NGX_CONF_ERROR;
-    field->name = value[0];
+    field->name = elts[0];
     return NGX_CONF_OK;
 }
 
 static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_str_t *value = cf->args->elts;
-    ngx_str_t name = value[1];
+    ngx_str_t *elts = cf->args->elts;
+    ngx_str_t name = elts[1];
     if (name.data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &name); return NGX_CONF_ERROR; }
     name.len--;
     name.data++;
@@ -577,33 +577,33 @@ static ngx_int_t ngx_http_json_var_loads_http_handler(ngx_http_request_t *r, ngx
 }
 
 static char *ngx_http_json_var_loads_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_str_t *value = cf->args->elts;
-    if ((value[1].len == sizeof("true") - 1 && !ngx_strncasecmp(value[1].data, (u_char *)"true", sizeof("true") - 1))
-     || (value[1].len == sizeof("false") - 1 && !ngx_strncasecmp(value[1].data, (u_char *)"false", sizeof("false") - 1))
-     || (value[1].len == sizeof("null") - 1 && !ngx_strncasecmp(value[1].data, (u_char *)"null", sizeof("null") - 1))) {
-        if (cf->args->nelts != 2) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid args count %l for command %V", cf->args->nelts, &value[1]); return NGX_CONF_ERROR; }
+    ngx_str_t *elts = cf->args->elts;
+    if ((elts[1].len == sizeof("true") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"true", sizeof("true") - 1))
+     || (elts[1].len == sizeof("false") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"false", sizeof("false") - 1))
+     || (elts[1].len == sizeof("null") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"null", sizeof("null") - 1))) {
+        if (cf->args->nelts != 2) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid args count %l for command %V", cf->args->nelts, &elts[1]); return NGX_CONF_ERROR; }
     } else {
-        if (cf->args->nelts != 3) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid args count %l for command %V", cf->args->nelts, &value[1]); return NGX_CONF_ERROR; }
+        if (cf->args->nelts != 3) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid args count %l for command %V", cf->args->nelts, &elts[1]); return NGX_CONF_ERROR; }
     }
     ngx_http_json_var_ctx_t *ctx = cf->ctx;
     ngx_http_json_var_field_t *field = ngx_array_push(ctx->fields);
     if (!field) return NGX_CONF_ERROR;
-    field->name = value[0];
-    field->command = value[1];
-    field->value = value[2];
-    if ((value[1].len == sizeof("string") - 1 && !ngx_strncasecmp(value[1].data, (u_char *)"string", sizeof("string") - 1))
-     || (value[1].len == sizeof("integer") - 1 && !ngx_strncasecmp(value[1].data, (u_char *)"integer", sizeof("integer") - 1))
-     || (value[1].len == sizeof("real") - 1 && !ngx_strncasecmp(value[1].data, (u_char *)"real", sizeof("real") - 1))
-     || (value[1].len == sizeof("loads") - 1 && !ngx_strncasecmp(value[1].data, (u_char *)"loads", sizeof("loads") - 1))) {
-        ngx_http_compile_complex_value_t ccv = {ctx->cf, &value[2], &field->cv, 0, 0, 0};
+    field->name = elts[0];
+    field->command = elts[1];
+    field->value = elts[2];
+    if ((elts[1].len == sizeof("string") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"string", sizeof("string") - 1))
+     || (elts[1].len == sizeof("integer") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"integer", sizeof("integer") - 1))
+     || (elts[1].len == sizeof("real") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"real", sizeof("real") - 1))
+     || (elts[1].len == sizeof("loads") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"loads", sizeof("loads") - 1))) {
+        ngx_http_compile_complex_value_t ccv = {ctx->cf, &elts[2], &field->cv, 0, 0, 0};
         if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return NGX_CONF_ERROR;
     }
     return NGX_CONF_OK;
 }
 
 static char *ngx_http_json_var_loads_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_str_t *value = cf->args->elts;
-    ngx_str_t name = value[1];
+    ngx_str_t *elts = cf->args->elts;
+    ngx_str_t name = elts[1];
     if (name.data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &name); return NGX_CONF_ERROR; }
     name.len--;
     name.data++;
