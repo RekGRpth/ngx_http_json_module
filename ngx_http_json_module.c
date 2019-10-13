@@ -383,16 +383,16 @@ static ngx_int_t ngx_http_json_loads_handler(ngx_http_request_t *r, ngx_http_var
 
 static char *ngx_http_json_loads_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_str_t *elts = cf->args->elts;
-    if (elts[1].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &elts[1]); return NGX_CONF_ERROR; }
+    if (elts[1].data[0] != '$') return "invalid variable name";
     elts[1].len--;
     elts[1].data++;
     ngx_http_variable_t *v = ngx_http_add_variable(cf, &elts[1], NGX_HTTP_VAR_CHANGEABLE);
-    if (!v) return NGX_CONF_ERROR;
+    if (!v) return "!ngx_http_add_variable";
     v->get_handler = ngx_http_json_loads_handler;
     ngx_http_complex_value_t *cv = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
-    if (!cv) return NGX_CONF_ERROR;
+    if (!cv) return "!ngx_palloc";
     ngx_http_compile_complex_value_t ccv = {cf, &elts[2], cv, 0, 0, 0};
-    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return NGX_CONF_ERROR;
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return "ngx_http_compile_complex_value != NGX_OK";
     v->data = (uintptr_t)cv;
     return NGX_CONF_OK;
 }
@@ -423,20 +423,20 @@ static ngx_int_t ngx_http_json_dumps_handler(ngx_http_request_t *r, ngx_http_var
 
 static char *ngx_http_json_dumps_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_str_t *elts = cf->args->elts;
-    if (elts[2].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &elts[2]); return NGX_CONF_ERROR; }
+    if (elts[2].data[0] != '$') return "invalid variable name";
     elts[2].len--;
     elts[2].data++;
-    if (elts[1].data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &elts[1]); return NGX_CONF_ERROR; }
+    if (elts[1].data[0] != '$') return "invalid variable name";
     elts[1].len--;
     elts[1].data++;
     ngx_http_variable_t *v = ngx_http_add_variable(cf, &elts[1], NGX_HTTP_VAR_CHANGEABLE);
-    if (!v) return NGX_CONF_ERROR;
+    if (!v) return "!ngx_http_add_variable";
     v->get_handler = ngx_http_json_dumps_handler;
     ngx_array_t *args = ngx_array_create(cf->pool, cf->args->nelts - 2, sizeof(ngx_str_t));
-    if (!args) return NGX_CONF_ERROR;
+    if (!args) return "!ngx_array_create";
     for (ngx_uint_t i = 2; i < cf->args->nelts; i++) {
         ngx_str_t *s = ngx_array_push(args);
-        if (!s) return NGX_CONF_ERROR;
+        if (!s) return "!ngx_array_push";
         *s = elts[i];
     }
     v->data = (uintptr_t)args;
@@ -486,12 +486,12 @@ static ngx_int_t ngx_http_json_var_http_handler(ngx_http_request_t *r, ngx_http_
 
 static char *ngx_http_json_var_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_str_t *elts = cf->args->elts;
-    if (cf->args->nelts != 2) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid args count %l for command %V", cf->args->nelts, elts); return NGX_CONF_ERROR; }
+    if (cf->args->nelts != 2) return "invalid args count";
     ngx_http_json_var_ctx_t *ctx = cf->ctx;
     ngx_http_json_var_field_t *field = ngx_array_push(ctx->fields);
-    if (!field) return NGX_CONF_ERROR;
+    if (!field) return "!ngx_array_push";
     ngx_http_compile_complex_value_t ccv = {ctx->cf, &elts[1], &field->cv, 0, 0, 0};
-    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return NGX_CONF_ERROR;
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return "ngx_http_compile_complex_value != NGX_OK";
     field->name = elts[0];
     return NGX_CONF_OK;
 }
@@ -499,13 +499,13 @@ static char *ngx_http_json_var_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, 
 static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_str_t *elts = cf->args->elts;
     ngx_str_t name = elts[1];
-    if (name.data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &name); return NGX_CONF_ERROR; }
+    if (name.data[0] != '$') return "invalid variable name";
     name.len--;
     name.data++;
     ngx_array_t *fields = ngx_array_create(cf->pool, 4, sizeof(ngx_http_json_var_field_t));
-    if (!fields) return NGX_CONF_ERROR;
+    if (!fields) return "!ngx_array_create";
     ngx_http_variable_t *var = ngx_http_add_variable(cf, &name, NGX_HTTP_VAR_CHANGEABLE | NGX_HTTP_VAR_NOCACHEABLE);
-    if (!var) return NGX_CONF_ERROR;
+    if (!var) return "!ngx_http_add_variable";
     var->get_handler = ngx_http_json_var_http_handler;
     var->data = (uintptr_t)fields;
     ngx_conf_t save = *cf;
@@ -515,7 +515,7 @@ static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *co
     char *rv = ngx_conf_parse(cf, NULL);
     *cf = save;
     if (rv != NGX_CONF_OK) return rv;
-    if (fields->nelts <= 0) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "no fields defined in \"json_var\" block"); return NGX_CONF_ERROR; }
+    if (fields->nelts <= 0) return "no fields defined";
     return rv;
 }
 
@@ -581,13 +581,13 @@ static char *ngx_http_json_var_loads_conf_handler(ngx_conf_t *cf, ngx_command_t 
     if ((elts[1].len == sizeof("true") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"true", sizeof("true") - 1))
      || (elts[1].len == sizeof("false") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"false", sizeof("false") - 1))
      || (elts[1].len == sizeof("null") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"null", sizeof("null") - 1))) {
-        if (cf->args->nelts != 2) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid args count %l for command %V", cf->args->nelts, &elts[1]); return NGX_CONF_ERROR; }
+        if (cf->args->nelts != 2) return "invalid args count";
     } else {
-        if (cf->args->nelts != 3) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid args count %l for command %V", cf->args->nelts, &elts[1]); return NGX_CONF_ERROR; }
+        if (cf->args->nelts != 3) return "invalid args count";
     }
     ngx_http_json_var_ctx_t *ctx = cf->ctx;
     ngx_http_json_var_field_t *field = ngx_array_push(ctx->fields);
-    if (!field) return NGX_CONF_ERROR;
+    if (!field) return "!ngx_array_push";
     field->name = elts[0];
     field->command = elts[1];
     field->value = elts[2];
@@ -596,7 +596,7 @@ static char *ngx_http_json_var_loads_conf_handler(ngx_conf_t *cf, ngx_command_t 
      || (elts[1].len == sizeof("real") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"real", sizeof("real") - 1))
      || (elts[1].len == sizeof("loads") - 1 && !ngx_strncasecmp(elts[1].data, (u_char *)"loads", sizeof("loads") - 1))) {
         ngx_http_compile_complex_value_t ccv = {ctx->cf, &elts[2], &field->cv, 0, 0, 0};
-        if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return NGX_CONF_ERROR;
+        if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return "ngx_http_compile_complex_value != NGX_OK";
     }
     return NGX_CONF_OK;
 }
@@ -604,13 +604,13 @@ static char *ngx_http_json_var_loads_conf_handler(ngx_conf_t *cf, ngx_command_t 
 static char *ngx_http_json_var_loads_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_str_t *elts = cf->args->elts;
     ngx_str_t name = elts[1];
-    if (name.data[0] != '$') { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid variable name \"%V\"", &name); return NGX_CONF_ERROR; }
+    if (name.data[0] != '$') return "invalid variable name";
     name.len--;
     name.data++;
     ngx_array_t *fields = ngx_array_create(cf->pool, 4, sizeof(ngx_http_json_var_field_t));
-    if (!fields) return NGX_CONF_ERROR;
+    if (!fields) return "!ngx_array_create";
     ngx_http_variable_t *var = ngx_http_add_variable(cf, &name, NGX_HTTP_VAR_CHANGEABLE | NGX_HTTP_VAR_NOCACHEABLE);
-    if (!var) return NGX_CONF_ERROR;
+    if (!var) return "!ngx_http_add_variable";
     var->get_handler = ngx_http_json_var_loads_http_handler;
     var->data = (uintptr_t)fields;
     ngx_conf_t save = *cf;
@@ -620,7 +620,7 @@ static char *ngx_http_json_var_loads_conf(ngx_conf_t *cf, ngx_command_t *cmd, vo
     char *rv = ngx_conf_parse(cf, NULL);
     *cf = save;
     if (rv != NGX_CONF_OK) return rv;
-    if (fields->nelts <= 0) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "no fields defined in \"json_var_loads\" block"); return NGX_CONF_ERROR; }
+    if (fields->nelts <= 0) return "no fields defined";
     return rv;
 }
 
