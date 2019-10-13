@@ -652,7 +652,7 @@ static ngx_command_t ngx_http_json_commands[] = {
     ngx_null_command
 };
 
-static ngx_http_module_t ngx_http_json_module_ctx = {
+static ngx_http_module_t ngx_http_json_ctx = {
     .preconfiguration = ngx_http_json_preconfiguration,
     .postconfiguration = NULL,
     .create_main_conf = NULL,
@@ -665,7 +665,7 @@ static ngx_http_module_t ngx_http_json_module_ctx = {
 
 ngx_module_t ngx_http_json_module = {
     NGX_MODULE_V1,
-    .ctx = &ngx_http_json_module_ctx,
+    .ctx = &ngx_http_json_ctx,
     .commands = ngx_http_json_commands,
     .type = NGX_HTTP_MODULE,
     .init_master = NULL,
