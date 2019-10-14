@@ -383,7 +383,7 @@ static ngx_int_t ngx_http_json_dumps_func(ngx_http_request_t *r, ngx_str_t *val,
     if (!vv->data) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!vv->data"); return NGX_ERROR; }
     if (vv->len != sizeof(json_t)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "vv->len != sizeof(json_t)"); return NGX_ERROR; }
     json_t *json = (json_t *)vv->data;
-    for (ngx_uint_t i = 0; json && (i < index_nelts->nelts); i++) {
+    for (ngx_uint_t i = 0; json && i < index_nelts->nelts; i++) {
         u_char *key = ngx_pnalloc(r->pool, v[i].len + 1);
         if (!key) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
         (void)ngx_cpystrn(key, v[i].data, v[i].len + 1);
