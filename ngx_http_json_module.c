@@ -565,47 +565,11 @@ static char *ngx_http_json_var_loads_conf_handler(ngx_conf_t *cf, ngx_command_t 
     ngx_str_t *elts = cf->args->elts;
     field->name = elts[0];
     field->command = elts[1];
-    if (field->command.len == sizeof("true") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"true", sizeof("true") - 1)) {
-        if (cf->args->nelts != 2) return "cf->args->nelts != 2";
-        field->json = NGX_JSON_TRUE;
-        return NGX_CONF_OK;
-    }
-    if (field->command.len == sizeof("false") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"false", sizeof("false") - 1)) {
-        if (cf->args->nelts != 2) return "cf->args->nelts != 2";
-        field->json = NGX_JSON_FALSE;
-        return NGX_CONF_OK;
-    }
-    if (field->command.len == sizeof("null") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"null", sizeof("null") - 1)) {
-        if (cf->args->nelts != 2) return "cf->args->nelts != 2";
-        field->json = NGX_JSON_NULL;
-        return NGX_CONF_OK;
-    }
+    if (field->command.len == sizeof("true") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"true", sizeof("true") - 1)) { if (cf->args->nelts != 2) return "cf->args->nelts != 2"; field->json = NGX_JSON_TRUE; return NGX_CONF_OK; }
+    if (field->command.len == sizeof("false") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"false", sizeof("false") - 1)) { if (cf->args->nelts != 2) return "cf->args->nelts != 2"; field->json = NGX_JSON_FALSE; return NGX_CONF_OK; }
+    if (field->command.len == sizeof("null") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"null", sizeof("null") - 1)) { if (cf->args->nelts != 2) return "cf->args->nelts != 2"; field->json = NGX_JSON_NULL; return NGX_CONF_OK; }
     if (cf->args->nelts != 3) return "cf->args->nelts != 3";
     field->value = elts[2];
-    if (field->command.len == sizeof("string") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"string", sizeof("string") - 1)) {
-        ngx_http_compile_complex_value_t ccv = {ctx->cf, &field->value, &field->cv, 0, 0, 0};
-        if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return "ngx_http_compile_complex_value != NGX_OK";
-        field->json = NGX_JSON_STRING;
-        return NGX_CONF_OK;
-    }
-    if (field->command.len == sizeof("integer") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"integer", sizeof("integer") - 1)) {
-        ngx_http_compile_complex_value_t ccv = {ctx->cf, &field->value, &field->cv, 0, 0, 0};
-        if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return "ngx_http_compile_complex_value != NGX_OK";
-        field->json = NGX_JSON_INTEGER;
-        return NGX_CONF_OK;
-    }
-    if (field->command.len == sizeof("real") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"real", sizeof("real") - 1)) {
-        ngx_http_compile_complex_value_t ccv = {ctx->cf, &field->value, &field->cv, 0, 0, 0};
-        if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return "ngx_http_compile_complex_value != NGX_OK";
-        field->json = NGX_JSON_REAL;
-        return NGX_CONF_OK;
-    }
-    if (field->command.len == sizeof("loads") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"loads", sizeof("loads") - 1)) {
-        ngx_http_compile_complex_value_t ccv = {ctx->cf, &field->value, &field->cv, 0, 0, 0};
-        if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return "ngx_http_compile_complex_value != NGX_OK";
-        field->json = NGX_JSON_LOADS;
-        return NGX_CONF_OK;
-    }
     if (field->command.len == sizeof("object") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"object", sizeof("object") - 1)) {
         ngx_log_error(NGX_LOG_WARN, cf->log, 0, "field->value = %V", &field->value);
         if (field->value.data[0] != '$') return "invalid variable name";
@@ -619,6 +583,12 @@ static char *ngx_http_json_var_loads_conf_handler(ngx_conf_t *cf, ngx_command_t 
         field->json = NGX_JSON_OBJECT;
         return NGX_CONF_OK;
     }
+    ngx_http_compile_complex_value_t ccv = {ctx->cf, &field->value, &field->cv, 0, 0, 0};
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return "ngx_http_compile_complex_value != NGX_OK";
+    if (field->command.len == sizeof("string") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"string", sizeof("string") - 1)) { field->json = NGX_JSON_STRING; return NGX_CONF_OK; }
+    if (field->command.len == sizeof("integer") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"integer", sizeof("integer") - 1)) { field->json = NGX_JSON_INTEGER; return NGX_CONF_OK; }
+    if (field->command.len == sizeof("real") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"real", sizeof("real") - 1)) { field->json = NGX_JSON_REAL; return NGX_CONF_OK; }
+    if (field->command.len == sizeof("loads") - 1 && !ngx_strncasecmp(field->command.data, (u_char *)"loads", sizeof("loads") - 1)) { field->json = NGX_JSON_LOADS; return NGX_CONF_OK; }
     return "invalid command";
 }
 
