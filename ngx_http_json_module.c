@@ -4,9 +4,9 @@
 ngx_module_t ngx_http_json_module;
 
 typedef struct {
-    ngx_array_t array;
     ngx_uint_t index;
-} ngx_http_json_var_index_array_t;
+    ngx_uint_t nelts;
+} ngx_http_json_var_index_nelts_t;
 
 typedef struct {
     ngx_str_t name;
@@ -376,18 +376,17 @@ static ngx_int_t ngx_http_json_loads_func(ngx_http_request_t *r, ngx_str_t *val,
     return NGX_OK;
 }
 
-static ngx_int_t ngx_http_json_dumps_func(ngx_http_request_t *r, ngx_str_t *val, void *data) {
-    ngx_http_json_var_index_array_t *index_array = data;
-    ngx_http_variable_value_t *vv = ngx_http_get_indexed_variable(r, index_array->index);
+static ngx_int_t ngx_http_json_dumps_func(ngx_http_request_t *r, ngx_str_t *val, ngx_http_variable_value_t *v, void *data) {
+    ngx_http_json_var_index_nelts_t *index_nelts = data;
+    ngx_http_variable_value_t *vv = ngx_http_get_indexed_variable(r, index_nelts->index);
     if (!vv) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_get_indexed_variable"); return NGX_ERROR; }
     if (!vv->data) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!vv->data"); return NGX_ERROR; }
     if (vv->len != sizeof(json_t)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "vv->len != sizeof(json_t)"); return NGX_ERROR; }
     json_t *json = (json_t *)vv->data;
-    ngx_str_t *elts = index_array->array.elts;
-    for (ngx_uint_t i = 0; json && (i < index_array->array.nelts); i++) {
-        u_char *key = ngx_pnalloc(r->pool, elts[i].len + 1);
+    for (ngx_uint_t i = 0; json && (i < index_nelts->nelts); i++) {
+        u_char *key = ngx_pnalloc(r->pool, v[i].len + 1);
         if (!key) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-        (void)ngx_cpystrn(key, elts[i].data, elts[i].len + 1);
+        (void)ngx_cpystrn(key, v[i].data, v[i].len + 1);
         json = json_object_get(json, (const char *)key);
     }
     const char *value = json_string_value(json);
@@ -405,18 +404,12 @@ static char *ngx_http_json_dumps_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *
     elts[2].data++;
     ngx_int_t index = ngx_http_get_variable_index(cf, &elts[2]);
     if (index == NGX_ERROR) return "ngx_http_get_variable_index == NGX_ERROR";
-    ngx_log_error(NGX_LOG_WARN, cf->log, 0, "index = %i", index);
-    ngx_http_json_var_index_array_t *index_array = ngx_palloc(cf->pool, sizeof(ngx_http_json_var_index_array_t));
-    if (!index_array) return "!ngx_palloc";
-    index_array->index = (ngx_uint_t) index;
-    if (ngx_array_init(&index_array->array, cf->pool, cf->args->nelts - 3, sizeof(ngx_str_t)) != NGX_OK) return "ngx_array_init != NGX_OK";
-    for (ngx_uint_t i = 3; i < cf->args->nelts; i++) {
-        ngx_str_t *str = ngx_array_push(&index_array->array);
-        if (!str) return "!ngx_array_push";
-        *str = elts[i];
-    }
-    ndk_set_var_t filter = { NDK_SET_VAR_DATA, ngx_http_json_dumps_func, 0, index_array };
-    return ndk_set_var_core(cf, &elts[1], &filter);
+    ngx_http_json_var_index_nelts_t *index_nelts = ngx_palloc(cf->pool, sizeof(ngx_http_json_var_index_nelts_t));
+    if (!index_nelts) return "!ngx_palloc";
+    index_nelts->index = (ngx_uint_t) index;
+    index_nelts->nelts = cf->args->nelts - 3;
+    ndk_set_var_t filter = { NDK_SET_VAR_MULTI_VALUE_DATA, ngx_http_json_dumps_func, index_nelts->nelts, index_nelts };
+    return ndk_set_var_multi_value_core(cf, &elts[1], &elts[3], &filter);
 }
 
 static ngx_int_t ngx_http_json_var_func(ngx_http_request_t *r, ngx_str_t *val, void *data) {
