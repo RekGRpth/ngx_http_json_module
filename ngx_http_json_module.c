@@ -14,6 +14,7 @@ typedef struct {
     ngx_str_t value;
     ngx_http_complex_value_t cv;
     uintptr_t escape;
+    ngx_flag_t json;
 } ngx_http_json_var_field_t;
 
 typedef struct {
@@ -422,11 +423,7 @@ static ngx_int_t ngx_http_json_var_func(ngx_http_request_t *r, ngx_str_t *val, v
         if (!elts[i].value.len) continue;
         if (i) val->len += sizeof(",") - 1;
         val->len += sizeof("\"\":") - 1 + elts[i].name.len;
-        if ((elts[i].name.len == sizeof("json_headers") - 1 && !ngx_strncasecmp(elts[i].name.data, (u_char *)"json_headers", sizeof("json_headers") - 1))
-         || (elts[i].name.len == sizeof("json_cookies") - 1 && !ngx_strncasecmp(elts[i].name.data, (u_char *)"json_cookies", sizeof("json_cookies") - 1))
-         || (elts[i].name.len == sizeof("json_get_vars") - 1 && !ngx_strncasecmp(elts[i].name.data, (u_char *)"json_get_vars", sizeof("json_get_vars") - 1))
-         || (elts[i].name.len == sizeof("json_post_vars") - 1 && !ngx_strncasecmp(elts[i].name.data, (u_char *)"json_post_vars", sizeof("json_post_vars") - 1))
-        ) val->len += elts[i].value.len; else {
+        if (elts[i].json) val->len += elts[i].value.len; else {
             elts[i].escape = ngx_escape_json(NULL, elts[i].value.data, elts[i].value.len);
             val->len += sizeof("\"\"") - 1 + elts[i].value.len + elts[i].escape;
         }
@@ -442,11 +439,7 @@ static ngx_int_t ngx_http_json_var_func(ngx_http_request_t *r, ngx_str_t *val, v
         p = ngx_copy(p, elts[i].name.data, elts[i].name.len);
         *p++ = '"';
         *p++ = ':';
-        if ((elts[i].name.len == sizeof("json_headers") - 1 && !ngx_strncasecmp(elts[i].name.data, (u_char *)"json_headers", sizeof("json_headers") - 1))
-         || (elts[i].name.len == sizeof("json_cookies") - 1 && !ngx_strncasecmp(elts[i].name.data, (u_char *)"json_cookies", sizeof("json_cookies") - 1))
-         || (elts[i].name.len == sizeof("json_get_vars") - 1 && !ngx_strncasecmp(elts[i].name.data, (u_char *)"json_get_vars", sizeof("json_get_vars") - 1))
-         || (elts[i].name.len == sizeof("json_post_vars") - 1 && !ngx_strncasecmp(elts[i].name.data, (u_char *)"json_post_vars", sizeof("json_post_vars") - 1))
-        ) p = ngx_copy(p, elts[i].value.data, elts[i].value.len); else {
+        if (elts[i].json) p = ngx_copy(p, elts[i].value.data, elts[i].value.len); else {
             *p++ = '"';
             if (elts[i].escape) p = (u_char *)ngx_escape_json(p, elts[i].value.data, elts[i].value.len);
             else p = ngx_copy(p, elts[i].value.data, elts[i].value.len);
@@ -467,6 +460,10 @@ static char *ngx_http_json_var_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, 
     ngx_http_compile_complex_value_t ccv = {ctx->cf, &elts[1], &field->cv, 0, 0, 0};
     if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return "ngx_http_compile_complex_value != NGX_OK";
     field->name = elts[0];
+    field->json = (field->name.len == sizeof("json_headers") - 1 && !ngx_strncasecmp(field->name.data, (u_char *)"json_headers", sizeof("json_headers") - 1))
+               || (field->name.len == sizeof("json_cookies") - 1 && !ngx_strncasecmp(field->name.data, (u_char *)"json_cookies", sizeof("json_cookies") - 1))
+               || (field->name.len == sizeof("json_get_vars") - 1 && !ngx_strncasecmp(field->name.data, (u_char *)"json_get_vars", sizeof("json_get_vars") - 1))
+               || (field->name.len == sizeof("json_post_vars") - 1 && !ngx_strncasecmp(field->name.data, (u_char *)"json_post_vars", sizeof("json_post_vars") - 1));
     return NGX_CONF_OK;
 }
 
