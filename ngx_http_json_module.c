@@ -153,16 +153,50 @@ static ngx_int_t ngx_http_json_cookies(ngx_http_request_t *r, ngx_http_variable_
     return NGX_OK;
 }
 
-static size_t ngx_http_json_vars_size(u_char *start, u_char *end) {
-    size_t size;
-    for (size = 0; start < end; start++, size++) {
-        if (*start == '\\' || *start == '"') size++;
-        else if (*start == '&') size += sizeof("\"\":\"\",") - 1;
+#define unescape_len { \
+    u_char c; \
+    switch (*start) { \
+        case '%': { \
+            start++; \
+            c = *start++; \
+            if (!isxdigit(c)) break; \
+            if (c < 'A') c -= '0'; \
+            else if(c < 'a') c -= 'A' - 10; \
+            else c -= 'a' - 10; \
+            c = *start++; \
+            if (!isxdigit(c)) break; \
+            if (c < 'A') c -= '0'; \
+            else if(c < 'a') c -= 'A' - 10; \
+            else c -= 'a' - 10; \
+        } break; \
+        case '+': { c = ' '; start++; } break; \
+        default: c = *start++; \
+    } \
+    if (c == '\\' || c == '"') len++; \
+    len++; \
+}
+static size_t ngx_http_json_vars_len(u_char *start, u_char *end) {
+    size_t len;
+    for (len = 0; start < end;) {
+        if (len) len++;
+        len++;
+        while (start < end && (*start == '=' || *start == '&')) start++;
+        while (start < end && *start != '=' && *start != '&') unescape_len
+        len++; len++;
+        if (start < end && *start++ != '&') {
+            len++;
+            while (start < end && *start != '&') unescape_len
+            len++;
+        } else {
+            len++; len++; len++; len++;
+        }
     }
-    return size ? size + sizeof("{}\"\":\"\"") - 1 + 2 : 0;
+    len += sizeof("{}") - 1;
+    return len;
 }
 
-#define unescape_characters { \
+#define unescape_data { \
+    u_char c; \
     switch (*start) { \
         case '%': { \
             start++; \
@@ -186,41 +220,33 @@ static size_t ngx_http_json_vars_size(u_char *start, u_char *end) {
     if (c == '\\' || c == '"') *p++ = '\\'; \
     *p++ = c; \
 }
-static u_char *ngx_http_json_vars_data(u_char *p, u_char *start, u_char *end, u_char *args) {
-    for (u_char c; start < end; ) {
+static u_char *ngx_http_json_vars_data(u_char *p, u_char *start, u_char *end) {
+    *p++ = '{';
+    for (u_char *args = p; start < end;) {
         if (p != args) *p++ = ',';
         *p++ = '"';
         while (start < end && (*start == '=' || *start == '&')) start++;
-        while (start < end && *start != '=' && *start != '&') unescape_characters
+        while (start < end && *start != '=' && *start != '&') unescape_data
         *p++ = '"'; *p++ = ':';
         if (start < end && *start++ != '&') {
             *p++ = '"';
-            while (start < end && *start != '&') unescape_characters
+            while (start < end && *start != '&') unescape_data
             *p++ = '"';
         } else {
             *p++ = 'n'; *p++ = 'u'; *p++ = 'l'; *p++ = 'l';
         }
     }
+    *p++ = '}';
     return p;
 }
 
 static ngx_int_t ngx_http_json_get_vars(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
+    v->len = ngx_http_json_vars_len(r->args.data, r->args.data + r->args.len);
+    if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+    if (ngx_http_json_vars_data(v->data, r->args.data, r->args.data + r->args.len) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_vars_data != v->data + v->len"); return NGX_ERROR; }
     v->valid = 1;
     v->no_cacheable = 0;
     v->not_found = 0;
-    size_t size = ngx_http_json_vars_size(r->args.data, r->args.data + r->args.len);
-    if (!size) goto err;
-    u_char *p = ngx_pnalloc(r->pool, size);
-    if (!p) goto err;
-    v->data = p;
-    *p++ = '{';
-    p = ngx_http_json_vars_data(p, r->args.data, r->args.data + r->args.len, v->data + 1);
-    *p++ = '}';
-    v->len = p - v->data;
-    if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_get_vars: result length %l exceeded allocated length %l", v->len, size); goto err; }
-    return NGX_OK;
-err:
-    ngx_str_set(v, "");
     return NGX_OK;
 }
 
@@ -295,12 +321,12 @@ static ngx_int_t ngx_http_json_post_vars(ngx_http_request_t *r, ngx_http_variabl
     if (!buf) goto err;
     if (!r->headers_in.content_type) goto err;
     if (r->headers_in.content_type->value.len == sizeof("application/x-www-form-urlencoded") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/x-www-form-urlencoded", sizeof("application/x-www-form-urlencoded") - 1)) {
-        size_t size = ngx_http_json_vars_size(buf->pos, buf->last);
+        size_t size = ngx_http_json_vars_len(buf->pos, buf->last);
         u_char *p = ngx_pnalloc(r->pool, size);
         if (!p) goto err;
         v->data = p;
         *p++ = '{';
-        p = ngx_http_json_vars_data(p, buf->pos, buf->last, v->data + 1);
+        p = ngx_http_json_vars_data(p, buf->pos, buf->last);
         *p++ = '}';
         v->len = p - v->data;
         if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_post_vars: result length %l exceeded allocated length %l", v->len, size); goto err; }
