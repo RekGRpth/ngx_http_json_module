@@ -10,6 +10,7 @@ typedef struct {
 typedef struct {
     ngx_flag_t done;
     ngx_flag_t waiting_more_body;
+    ngx_uint_t content_type;
 } ngx_http_json_ctx_t;
 
 typedef struct {
@@ -46,6 +47,12 @@ enum {
     NGX_JSON_FALSE = JSON_FALSE,
     NGX_JSON_NULL = JSON_NULL,
     NGX_JSON_LOADS
+};
+
+enum {
+    NGX_JSON_APPLICATION_JSON,
+    NGX_JSON_MULTIPART_FORM_DATA,
+    NGX_JSON_APPLICATION_X_WWW_FORM_URLENCODED
 };
 
 static size_t ngx_http_json_headers_len(ngx_list_part_t *part) {
@@ -337,27 +344,33 @@ static ngx_int_t ngx_http_json_post_vars(ngx_http_request_t *r, ngx_http_variabl
     ngx_buf_t *buf = ngx_http_json_read_request_body_to_buffer(r);
     if (!buf) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_read_request_body_to_buffer"); return NGX_ERROR; }
     if (!r->headers_in.content_type) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!r->headers_in.content_type"); return NGX_ERROR; }
-    if (r->headers_in.content_type->value.len == sizeof("application/x-www-form-urlencoded") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/x-www-form-urlencoded", sizeof("application/x-www-form-urlencoded") - 1)) {
-        v->len = ngx_http_json_vars_len(buf->pos, buf->last);
-        if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-        if (ngx_http_json_vars_data(v->data, buf->pos, buf->last) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_vars_data != v->data + v->len"); return NGX_ERROR; }
-    } else if (r->headers_in.content_type->value.len == sizeof("application/json") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/json", sizeof("application/json") - 1)) {
-        v->len = ngx_buf_size(buf);
-        if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-        if (ngx_copy(v->data, buf->pos, v->len) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_copy != v->data + v->len"); return NGX_ERROR; }
-    } else if (r->headers_in.content_type->value.len > sizeof("multipart/form-data") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"multipart/form-data", sizeof("multipart/form-data") - 1)) {
-        if (ngx_strncmp(r->headers_in.content_type->value.data, (u_char *)"multipart/form-data; boundary=", sizeof("multipart/form-data; boundary=") - 1)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_strncmp"); return NGX_ERROR; }
-        size_t boundary_len = r->headers_in.content_type->value.len - (sizeof("multipart/form-data; boundary=") - 1);
-        u_char *boundary_data = ngx_pnalloc(r->pool, boundary_len + 4);
-        if (!boundary_data) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-        ngx_memcpy(boundary_data, "\r\n--", sizeof("\r\n--") - 1);
-        ngx_memcpy(boundary_data + 4, r->headers_in.content_type->value.data + sizeof("multipart/form-data; boundary=") - 1, boundary_len);
-        boundary_len += 4;
-        ngx_str_t boundary = {boundary_len, boundary_data};
-        if (!(v->len = ngx_http_json_post_vars_len(r, &boundary, buf->pos, buf->last))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_post_vars_len"); return NGX_ERROR; }
-        if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-        if (ngx_http_json_post_vars_data(r, v->data, &boundary, buf->pos, buf->last) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_post_vars_data != v->data + v->len"); /*return NGX_ERROR;*/ }
-    } else { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "unsupported content type %V", &r->headers_in.content_type->value); ngx_str_set(v, "{}"); }
+    ngx_http_json_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_json_module);
+    switch (ctx->content_type) {
+        case NGX_JSON_APPLICATION_X_WWW_FORM_URLENCODED: {
+            v->len = ngx_http_json_vars_len(buf->pos, buf->last);
+            if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+            if (ngx_http_json_vars_data(v->data, buf->pos, buf->last) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_vars_data != v->data + v->len"); return NGX_ERROR; }
+        } break;
+        case NGX_JSON_APPLICATION_JSON: {
+            v->len = ngx_buf_size(buf);
+            if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+            if (ngx_copy(v->data, buf->pos, v->len) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_copy != v->data + v->len"); return NGX_ERROR; }
+        } break;
+        case NGX_JSON_MULTIPART_FORM_DATA: {
+            if (ngx_strncmp(r->headers_in.content_type->value.data, (u_char *)"multipart/form-data; boundary=", sizeof("multipart/form-data; boundary=") - 1)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_strncmp"); return NGX_ERROR; }
+            size_t boundary_len = r->headers_in.content_type->value.len - (sizeof("multipart/form-data; boundary=") - 1);
+            u_char *boundary_data = ngx_pnalloc(r->pool, boundary_len + 4);
+            if (!boundary_data) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+            ngx_memcpy(boundary_data, "\r\n--", sizeof("\r\n--") - 1);
+            ngx_memcpy(boundary_data + 4, r->headers_in.content_type->value.data + sizeof("multipart/form-data; boundary=") - 1, boundary_len);
+            boundary_len += 4;
+            ngx_str_t boundary = {boundary_len, boundary_data};
+            if (!(v->len = ngx_http_json_post_vars_len(r, &boundary, buf->pos, buf->last))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_post_vars_len"); return NGX_ERROR; }
+            if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+            if (ngx_http_json_post_vars_data(r, v->data, &boundary, buf->pos, buf->last) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_post_vars_data != v->data + v->len"); return NGX_ERROR; }
+        } break;
+        default: ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "unsupported content type %V", &r->headers_in.content_type->value); ngx_str_set(v, "{}"); break;
+    }
 ret:
     v->valid = 1;
     v->no_cacheable = 0;
@@ -451,10 +464,14 @@ static ngx_int_t ngx_http_json_handler(ngx_http_request_t *r) {
     }
     if (r->method != NGX_HTTP_POST && r->method != NGX_HTTP_PUT) return NGX_DECLINED;
     if (r->headers_in.content_type == NULL || r->headers_in.content_type->value.data == NULL) return NGX_DECLINED;
-    if ((r->headers_in.content_type->value.len == sizeof("application/x-www-form-urlencoded") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/x-www-form-urlencoded", sizeof("application/x-www-form-urlencoded") - 1))
-     || (r->headers_in.content_type->value.len == sizeof("application/json") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/json", sizeof("application/json") - 1))
-     || (r->headers_in.content_type->value.len > sizeof("multipart/form-data") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"multipart/form-data", sizeof("multipart/form-data") - 1))); else return NGX_DECLINED;
     if (!(ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_json_ctx_t)))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pcalloc"); return NGX_ERROR; }
+    if (r->headers_in.content_type->value.len == sizeof("application/x-www-form-urlencoded") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/x-www-form-urlencoded", sizeof("application/x-www-form-urlencoded") - 1)) {
+        ctx->content_type = NGX_JSON_APPLICATION_X_WWW_FORM_URLENCODED;
+    } else if (r->headers_in.content_type->value.len == sizeof("application/json") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/json", sizeof("application/json") - 1)) {
+        ctx->content_type = NGX_JSON_APPLICATION_JSON;
+    } else if (r->headers_in.content_type->value.len > sizeof("multipart/form-data") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"multipart/form-data", sizeof("multipart/form-data") - 1)) {
+        ctx->content_type = NGX_JSON_MULTIPART_FORM_DATA;
+    } else return NGX_DECLINED;
     ngx_http_set_ctx(r, ctx, ngx_http_json_module);
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "start to read client request body");
     ngx_int_t rc = ngx_http_read_client_request_body(r, ngx_http_json_post_read);
