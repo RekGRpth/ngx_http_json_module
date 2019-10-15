@@ -444,28 +444,32 @@ static char *ngx_http_json_dumps_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *
     return ndk_set_var_multi_value_core(cf, &elts[1], &elts[3], &filter);
 }
 
-static ngx_int_t ngx_http_json_var_func(ngx_http_request_t *r, ngx_str_t *val, void *data) {
-    ngx_array_t *fields = data;
+static size_t ngx_http_json_var_len(ngx_http_request_t *r, ngx_array_t *fields) {
+    size_t len = 0;
     ngx_http_json_var_field_t *elts = fields->elts;
-    val->len = sizeof("{}") - 1;
     for (ngx_uint_t i = 0; i < fields->nelts; i++) {
         if (!elts[i].name.len) continue;
         if (ngx_http_complex_value(r, &elts[i].cv, &elts[i].value) != NGX_OK) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_complex_value != NGX_OK"); return NGX_ERROR; }
         if (!elts[i].value.len) continue;
-        if (i) val->len += sizeof(",") - 1;
-        val->len += sizeof("\"\":") - 1 + elts[i].name.len;
-        if (elts[i].json) val->len += elts[i].value.len; else {
+        if (len) len++;
+        len += sizeof("\"\":") - 1 + elts[i].name.len;
+        if (elts[i].json) len += elts[i].value.len; else {
             elts[i].escape = ngx_escape_json(NULL, elts[i].value.data, elts[i].value.len);
-            val->len += sizeof("\"\"") - 1 + elts[i].value.len + elts[i].escape;
+            len += sizeof("\"\"") - 1 + elts[i].value.len + elts[i].escape;
         }
     }
-    if (!(val->data = ngx_pnalloc(r->pool, val->len))){ ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-    u_char *p = val->data;
+    len += sizeof("{}") - 1;
+    return len;
+}
+
+static u_char *ngx_http_json_var_data(u_char *p, ngx_array_t *fields) {
     *p++ = '{';
+    u_char *var = p;
+    ngx_http_json_var_field_t *elts = fields->elts;
     for (ngx_uint_t i = 0; i < fields->nelts; i++) {
         if (!elts[i].name.len) continue;
         if (!elts[i].value.len) continue;
-        if (p != val->data + 1) *p++ = ',';
+        if (p != var) *p++ = ',';
         *p++ = '"';
         p = ngx_copy(p, elts[i].name.data, elts[i].name.len);
         *p++ = '"';
@@ -478,7 +482,14 @@ static ngx_int_t ngx_http_json_var_func(ngx_http_request_t *r, ngx_str_t *val, v
         }
     }
     *p++ = '}';
-    if (p != val->data + val->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "p != val->data + val->len"); return NGX_ERROR; }
+    return p;
+}
+
+static ngx_int_t ngx_http_json_var_func(ngx_http_request_t *r, ngx_str_t *val, void *data) {
+    ngx_array_t *fields = data;
+    val->len = ngx_http_json_var_len(r, fields);
+    if (!(val->data = ngx_pnalloc(r->pool, val->len))){ ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+    if (ngx_http_json_var_data(val->data, fields) != val->data + val->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_var_data != val->data + val->len"); return NGX_ERROR; }
     return NGX_OK;
 }
 
@@ -514,7 +525,7 @@ static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *co
     rv = ngx_conf_parse(cf, NULL);
     *cf = save;
     if (rv != NGX_CONF_OK) return rv;
-    if (fields->nelts <= 0) return "no fields defined";
+    if (!fields->nelts) return "!fields->nelts";
     return rv;
 }
 
