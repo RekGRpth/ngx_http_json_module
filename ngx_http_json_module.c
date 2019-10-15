@@ -479,13 +479,15 @@ static char *ngx_http_json_var_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, 
     ngx_http_json_var_ctx_t *ctx = cf->ctx;
     ngx_http_json_var_field_t *field = ngx_array_push(ctx->fields);
     if (!field) return "!ngx_array_push";
-    ngx_http_compile_complex_value_t ccv = {ctx->cf, &elts[1], &field->cv, 0, 0, 0};
+    field->value = elts[1];
+    field->json = field->value.data[0] == '$'
+       && ((field->value.len - 1 == sizeof("json_headers") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_headers", sizeof("json_headers") - 1))
+        || (field->value.len - 1 == sizeof("json_cookies") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_cookies", sizeof("json_cookies") - 1))
+        || (field->value.len - 1 == sizeof("json_get_vars") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_get_vars", sizeof("json_get_vars") - 1))
+        || (field->value.len - 1 == sizeof("json_post_vars") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_post_vars", sizeof("json_post_vars") - 1)));
+    ngx_http_compile_complex_value_t ccv = {ctx->cf, &field->value, &field->cv, 0, 0, 0};
     if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return "ngx_http_compile_complex_value != NGX_OK";
     field->name = elts[0];
-    field->json = (field->name.len == sizeof("json_headers") - 1 && !ngx_strncasecmp(field->name.data, (u_char *)"json_headers", sizeof("json_headers") - 1))
-               || (field->name.len == sizeof("json_cookies") - 1 && !ngx_strncasecmp(field->name.data, (u_char *)"json_cookies", sizeof("json_cookies") - 1))
-               || (field->name.len == sizeof("json_get_vars") - 1 && !ngx_strncasecmp(field->name.data, (u_char *)"json_get_vars", sizeof("json_get_vars") - 1))
-               || (field->name.len == sizeof("json_post_vars") - 1 && !ngx_strncasecmp(field->name.data, (u_char *)"json_post_vars", sizeof("json_post_vars") - 1));
     return NGX_CONF_OK;
 }
 
