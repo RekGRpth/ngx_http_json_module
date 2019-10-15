@@ -104,14 +104,17 @@ static ngx_int_t ngx_http_json_loads(ngx_http_request_t *r, ngx_http_variable_va
     return NGX_OK;
 }
 
-static size_t ngx_http_json_cookies_size(u_char *start, u_char *end) {
-    size_t size;
-    for (size = 0; start < end; start++, size++) {
+static size_t ngx_http_json_cookies_len(size_t len, u_char *start, u_char *end) {
+    while (start < end) {
         while (start < end && *start == ' ') start++;
-        if (*start == '\\' || *start == '"') size++;
-        else if (*start == ';') size += sizeof("\"\":\"\",") - 1;
+        if (len) len++;
+        len++;
+        for (; start < end && *start != '='; len++, start++) if (*start == '\\' || *start == '"') len++;
+        start++; len++; len++; len++;
+        for (; start < end && *start != ';'; len++, start++) if (*start == '\\' || *start == '"') len++; 
+        start++; len++;
     }
-    return size;
+    return len;
 }
 
 static u_char *ngx_http_json_cookies_data(u_char *p, u_char *start, u_char *end, u_char *cookies) {
@@ -128,25 +131,25 @@ static u_char *ngx_http_json_cookies_data(u_char *p, u_char *start, u_char *end,
 }
 
 static ngx_int_t ngx_http_json_cookies(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
+    v->len = 0;
+    ngx_table_elt_t **elts = r->headers_in.cookies.elts;
+    for (ngx_uint_t i = 0; i < r->headers_in.cookies.nelts; i++) {
+        if (!elts[i]->value.len) continue;
+        v->len += ngx_http_json_cookies_len(v->len, elts[i]->value.data, elts[i]->value.data + elts[i]->value.len);
+    }
+    v->len += sizeof("{}") - 1;
+    if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+    u_char *p = v->data;
+    *p++ = '{';
+    for (ngx_uint_t i = 0; i < r->headers_in.cookies.nelts; i++) {
+        if (!elts[i]->value.len) continue;
+        p = ngx_http_json_cookies_data(p, elts[i]->value.data, elts[i]->value.data + elts[i]->value.len, v->data + 1);
+    }
+    *p++ = '}';
+    if (p != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "p != v->data + v->len"); return NGX_ERROR; }
     v->valid = 1;
     v->no_cacheable = 0;
     v->not_found = 0;
-    size_t size = 0;
-    ngx_table_elt_t **h = r->headers_in.cookies.elts;
-    for (ngx_uint_t i = 0; i < r->headers_in.cookies.nelts; i++) size += ngx_http_json_cookies_size(h[i]->value.data, h[i]->value.data + h[i]->value.len);
-    if (!size) goto err;
-    size += sizeof("{}\"\":\"\"") - 1;
-    u_char *p = ngx_pnalloc(r->pool, size);
-    if (!p) goto err;
-    v->data = p;
-    *p++ = '{';
-    for (ngx_uint_t i = 0; i < r->headers_in.cookies.nelts; i++) p = ngx_http_json_cookies_data(p, h[i]->value.data, h[i]->value.data + h[i]->value.len, v->data + 1);
-    *p++ = '}';
-    v->len = p - v->data;
-    if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_cookies: result length %l exceeded allocated length %l", v->len, size); goto err; }
-    return NGX_OK;
-err:
-    ngx_str_set(v, "");
     return NGX_OK;
 }
 
