@@ -50,7 +50,7 @@ static size_t ngx_http_json_headers_len(ngx_list_part_t *part) {
             len += (sizeof("\"\":\"\"") - 1) + elts[i].key.len + elts[i].value.len + ngx_escape_json(NULL, elts[i].value.data, elts[i].value.len);
         }
     }
-    if (len) len += sizeof("{}") - 1;
+    len += sizeof("{}") - 1;
     return len;
 }
 
@@ -74,7 +74,7 @@ static u_char *ngx_http_json_headers_data(u_char *p, ngx_list_part_t *part) {
 }
 
 static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
-    if (!(v->len = ngx_http_json_headers_len(&r->headers_in.headers.part))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_headers_len"); return NGX_ERROR; }
+    v->len = ngx_http_json_headers_len(&r->headers_in.headers.part);
     if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
     if (ngx_http_json_headers_data(v->data, &r->headers_in.headers.part) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_headers_data != v->data + v->len"); return NGX_ERROR; }
     v->valid = 1;
