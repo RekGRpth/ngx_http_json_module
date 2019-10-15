@@ -40,23 +40,26 @@ enum {
 };
 
 static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
-    v->valid = 1;
-    v->no_cacheable = 0;
-    v->not_found = 0;
-    size_t size = 0;
+    v->len = 0;
     for (ngx_list_part_t *part = &r->headers_in.headers.part; part; part = part->next) {
         ngx_table_elt_t *header = part->elts;
-        for (ngx_uint_t i = 0; i < part->nelts; i++) if (header[i].value.len) size += (sizeof("\"\":\"\",") - 1) + header[i].key.len + header[i].value.len + ngx_escape_json(NULL, header[i].value.data, header[i].value.len);
+        for (ngx_uint_t i = 0; i < part->nelts; i++) {
+            if (!header[i].key.len) continue;
+            if (!header[i].value.len) continue;
+            if (v->len) v->len += sizeof(",") - 1;
+            v->len += (sizeof("\"\":\"\"") - 1) + header[i].key.len + header[i].value.len + ngx_escape_json(NULL, header[i].value.data, header[i].value.len);
+        }
     }
-    if (!size) goto err;
-    size += sizeof("{}") - 1;
-    u_char *p = ngx_pnalloc(r->pool, size);
-    if (!p) goto err;
-    v->data = p;
+    if (!v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!v->len"); return NGX_ERROR; }
+    v->len += sizeof("{}") - 1;
+    if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+    u_char *p = v->data;
     *p++ = '{';
     for (ngx_list_part_t *part = &r->headers_in.headers.part; part; part = part->next) {
         ngx_table_elt_t *header = part->elts;
-        for (ngx_uint_t i = 0; i < part->nelts; i++) if (header[i].value.len) {
+        for (ngx_uint_t i = 0; i < part->nelts; i++) {
+            if (!header[i].key.len) continue;
+            if (!header[i].value.len) continue;
             ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "header[%i] = %V:%V", i, &header[i].key, &header[i].value);
             if (p != v->data + 1) *p++ = ',';
             *p++ = '"';
@@ -67,11 +70,10 @@ static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_
         }
     }
     *p++ = '}';
-    v->len = p - v->data;
-    if (v->len > size) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_headers: result length %l exceeded allocated length %l", v->len, size); goto err; }
-    return NGX_OK;
-err:
-    ngx_str_set(v, "");
+    if (p != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "p != v->data + v->len"); return NGX_ERROR; }
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
     return NGX_OK;
 }
 
@@ -321,49 +323,49 @@ static ngx_http_variable_t ngx_http_json_variables[] = {
     .set_handler = NULL,
     .get_handler = ngx_http_json_headers,
     .data = 0,
-    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .flags = NGX_HTTP_VAR_CHANGEABLE,
     .index = 0 },
   { .name = ngx_string("json_headers_loads"),
     .set_handler = NULL,
     .get_handler = ngx_http_json_loads,
     .data = (uintptr_t)&(ngx_str_t)ngx_string("json_headers"),
-    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .flags = NGX_HTTP_VAR_CHANGEABLE,
     .index = 0 },
   { .name = ngx_string("json_cookies"),
     .set_handler = NULL,
     .get_handler = ngx_http_json_cookies,
     .data = 0,
-    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .flags = NGX_HTTP_VAR_CHANGEABLE,
     .index = 0 },
   { .name = ngx_string("json_cookies_loads"),
     .set_handler = NULL,
     .get_handler = ngx_http_json_loads,
     .data = (uintptr_t)&(ngx_str_t)ngx_string("json_cookies"),
-    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .flags = NGX_HTTP_VAR_CHANGEABLE,
     .index = 0 },
   { .name = ngx_string("json_get_vars"),
     .set_handler = NULL,
     .get_handler = ngx_http_json_get_vars,
     .data = 0,
-    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .flags = NGX_HTTP_VAR_CHANGEABLE,
     .index = 0 },
   { .name = ngx_string("json_get_vars_loads"),
     .set_handler = NULL,
     .get_handler = ngx_http_json_loads,
     .data = (uintptr_t)&(ngx_str_t)ngx_string("json_get_vars"),
-    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .flags = NGX_HTTP_VAR_CHANGEABLE,
     .index = 0 },
   { .name = ngx_string("json_post_vars"),
     .set_handler = NULL,
     .get_handler = ngx_http_json_post_vars,
     .data = 0,
-    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .flags = NGX_HTTP_VAR_CHANGEABLE,
     .index = 0 },
   { .name = ngx_string("json_post_vars_loads"),
     .set_handler = NULL,
     .get_handler = ngx_http_json_loads,
     .data = (uintptr_t)&(ngx_str_t)ngx_string("json_post_vars"),
-    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .flags = NGX_HTTP_VAR_CHANGEABLE,
     .index = 0 },
     ngx_http_null_variable
 };
