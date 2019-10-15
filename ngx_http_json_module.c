@@ -78,15 +78,16 @@ static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_
 }
 
 static ngx_int_t ngx_http_json_loads(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
-    v->not_found = 1;
-    ngx_str_t *variable = (ngx_str_t *)data;
-    ngx_http_variable_value_t *value = ngx_http_get_variable(r, variable, ngx_hash_key(variable->data, variable->len));
-    if (!value || !value->data) return NGX_OK;
+    ngx_uint_t index = (ngx_uint_t)data;
+    ngx_http_variable_value_t *vv = ngx_http_get_indexed_variable(r, index);
+    if (!vv) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_get_indexed_variable"); return NGX_ERROR; }
+    if (!vv->data) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!vv->data"); return NGX_ERROR; }
+    if (!vv->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!vv->len"); return NGX_ERROR; }
     json_error_t error;
-    json_t *json = json_loadb((char *)value->data, value->len, JSON_DECODE_ANY, &error);
-    if (!json) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "json decode error: %s", error.text); return NGX_OK; }
+    json_t *json = json_loadb((char *)vv->data, vv->len, JSON_DECODE_ANY, &error);
+    if (!json) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!json_loadb: %s", error.text); return NGX_ERROR; }
     ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (!cln) { ngx_http_json_json_object_clear(json); return NGX_OK; }
+    if (!cln) { ngx_http_json_json_object_clear(json); ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pool_cleanup_add"); return NGX_ERROR; }
     cln->handler = (ngx_pool_cleanup_pt)ngx_http_json_json_object_clear;
     cln->data = json;
     v->data = (u_char *)json;
@@ -375,6 +376,12 @@ static ngx_int_t ngx_http_json_preconfiguration(ngx_conf_t *cf) {
         ngx_http_variable_t *var = ngx_http_add_variable(cf, &v->name, v->flags);
         if (!var) return NGX_ERROR;
         *var = *v;
+        if (var->data) {
+            ngx_str_t *name = (ngx_str_t *)var->data;
+            ngx_int_t index = ngx_http_get_variable_index(cf, name);
+            if (index == NGX_ERROR) return NGX_ERROR;
+            var->data = (uintptr_t)index;
+        }
     }
     return NGX_OK;
 }
