@@ -55,7 +55,8 @@ enum {
     NGX_JSON_APPLICATION_X_WWW_FORM_URLENCODED
 };
 
-static size_t ngx_http_json_headers_len(ngx_list_part_t *part) {
+static size_t ngx_http_json_headers_len(ngx_http_request_t *r) {
+    ngx_list_part_t *part = &r->headers_in.headers.part;
     size_t len;
     for (len = 0; part; part = part->next) {
         ngx_table_elt_t *elts = part->elts;
@@ -70,7 +71,8 @@ static size_t ngx_http_json_headers_len(ngx_list_part_t *part) {
     return len;
 }
 
-static u_char *ngx_http_json_headers_data(u_char *p, ngx_list_part_t *part) {
+static u_char *ngx_http_json_headers_data(ngx_http_request_t *r, u_char *p) {
+    ngx_list_part_t *part = &r->headers_in.headers.part;
     *p++ = '{';
     for (u_char *headers = p; part; part = part->next) {
         ngx_table_elt_t *elts = part->elts;
@@ -78,6 +80,7 @@ static u_char *ngx_http_json_headers_data(u_char *p, ngx_list_part_t *part) {
             if (!elts[i].key.len) continue;
             if (!elts[i].value.len) continue;
             if (p != headers) *p++ = ',';
+            ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "header[%i] = %V: %V", i, &elts[i].key, &elts[i].value);
             *p++ = '"';
             p = ngx_copy(p, elts[i].key.data, elts[i].key.len);
             *p++ = '"'; *p++ = ':'; *p++ = '"';
@@ -90,9 +93,9 @@ static u_char *ngx_http_json_headers_data(u_char *p, ngx_list_part_t *part) {
 }
 
 static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
-    v->len = ngx_http_json_headers_len(&r->headers_in.headers.part);
+    v->len = ngx_http_json_headers_len(r);
     if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-    if (ngx_http_json_headers_data(v->data, &r->headers_in.headers.part) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_headers_data != v->data + v->len"); return NGX_ERROR; }
+    if (ngx_http_json_headers_data(r, v->data) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_headers_data != v->data + v->len"); return NGX_ERROR; }
     v->valid = 1;
     v->no_cacheable = 0;
     v->not_found = 0;
