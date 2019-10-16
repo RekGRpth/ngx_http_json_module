@@ -1,5 +1,5 @@
 #include <jansson.h>
-#include "ndk_set_var.h"
+#include <ngx_http.h>
 
 ngx_module_t ngx_http_json_module;
 
