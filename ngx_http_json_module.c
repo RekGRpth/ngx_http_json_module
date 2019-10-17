@@ -63,6 +63,7 @@ static size_t ngx_http_json_headers_len(ngx_http_request_t *r) {
         for (ngx_uint_t i = 0; i < part->nelts; i++) {
             if (!elts[i].key.len) continue;
             if (!elts[i].value.len) continue;
+            if (elts[i].key.len == sizeof("Authorization") - 1 && !ngx_strncasecmp(elts[i].key.data, (u_char *)"Authorization", sizeof("Authorization") - 1)) continue;
             if (len) len += sizeof(",") - 1;
             len += (sizeof("\"\":\"\"") - 1) + elts[i].key.len + elts[i].value.len + ngx_escape_json(NULL, elts[i].value.data, elts[i].value.len);
         }
@@ -79,6 +80,7 @@ static u_char *ngx_http_json_headers_data(ngx_http_request_t *r, u_char *p) {
         for (ngx_uint_t i = 0; i < part->nelts; i++) {
             if (!elts[i].key.len) continue;
             if (!elts[i].value.len) continue;
+            if (elts[i].key.len == sizeof("Authorization") - 1 && !ngx_strncasecmp(elts[i].key.data, (u_char *)"Authorization", sizeof("Authorization") - 1)) continue;
             if (p != headers) *p++ = ',';
             ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "header[%i] = %V: %V", i, &elts[i].key, &elts[i].value);
             *p++ = '"';
