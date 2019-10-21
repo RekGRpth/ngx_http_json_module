@@ -175,7 +175,7 @@ static ngx_int_t ngx_http_json_cookies(ngx_http_request_t *r, ngx_http_variable_
 }
 
 #define unescape_len { \
-    u_char c; \
+    u_char c, p; \
     switch (*start) { \
         case '%': { \
             start++; \
@@ -184,11 +184,14 @@ static ngx_int_t ngx_http_json_cookies(ngx_http_request_t *r, ngx_http_variable_
             if (c < 'A') c -= '0'; \
             else if(c < 'a') c -= 'A' - 10; \
             else c -= 'a' - 10; \
+            p = (c << 4); \
             c = *start++; \
             if (!isxdigit(c)) break; \
             if (c < 'A') c -= '0'; \
             else if(c < 'a') c -= 'A' - 10; \
             else c -= 'a' - 10; \
+            p += c; \
+            c = p; \
         } break; \
         case '+': { c = ' '; start++; } break; \
         default: c = *start++; \
