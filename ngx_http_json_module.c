@@ -55,8 +55,7 @@ enum {
     NGX_JSON_APPLICATION_X_WWW_FORM_URLENCODED
 };
 
-static size_t ngx_http_json_headers_len(ngx_http_request_t *r) {
-    ngx_list_part_t *part = &r->headers_in.headers.part;
+static size_t ngx_http_json_headers_len(ngx_http_request_t *r, ngx_list_part_t *part) {
     size_t len;
     for (len = 0; part; part = part->next) {
         ngx_table_elt_t *elts = part->elts;
@@ -72,8 +71,7 @@ static size_t ngx_http_json_headers_len(ngx_http_request_t *r) {
     return len;
 }
 
-static u_char *ngx_http_json_headers_data(ngx_http_request_t *r, u_char *p) {
-    ngx_list_part_t *part = &r->headers_in.headers.part;
+static u_char *ngx_http_json_headers_data(ngx_http_request_t *r, ngx_list_part_t *part, u_char *p) {
     *p++ = '{';
     for (u_char *headers = p; part; part = part->next) {
         ngx_table_elt_t *elts = part->elts;
@@ -94,10 +92,20 @@ static u_char *ngx_http_json_headers_data(ngx_http_request_t *r, u_char *p) {
     return p;
 }
 
-static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
-    v->len = ngx_http_json_headers_len(r);
+static ngx_int_t ngx_http_json_response_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
+    v->len = ngx_http_json_headers_len(r, &r->headers_out.headers.part);
     if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-    if (ngx_http_json_headers_data(r, v->data) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_headers_data != v->data + v->len"); return NGX_ERROR; }
+    if (ngx_http_json_headers_data(r, &r->headers_out.headers.part, v->data) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_headers_data != v->data + v->len"); return NGX_ERROR; }
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+    return NGX_OK;
+}
+
+static ngx_int_t ngx_http_json_headers(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
+    v->len = ngx_http_json_headers_len(r, &r->headers_in.headers.part);
+    if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+    if (ngx_http_json_headers_data(r, &r->headers_in.headers.part, v->data) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_headers_data != v->data + v->len"); return NGX_ERROR; }
     v->valid = 1;
     v->no_cacheable = 0;
     v->not_found = 0;
@@ -387,6 +395,18 @@ ret:
 }
 
 static ngx_http_variable_t ngx_http_json_variables[] = {
+  { .name = ngx_string("json_response_headers"),
+    .set_handler = NULL,
+    .get_handler = ngx_http_json_response_headers,
+    .data = 0,
+    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .index = 0 },
+  { .name = ngx_string("json_response_headers_loads"),
+    .set_handler = NULL,
+    .get_handler = ngx_http_json_loads,
+    .data = (uintptr_t)&(ngx_str_t)ngx_string("json_response_headers"),
+    .flags = NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE,
+    .index = 0 },
   { .name = ngx_string("json_headers"),
     .set_handler = NULL,
     .get_handler = ngx_http_json_headers,
@@ -614,7 +634,8 @@ static char *ngx_http_json_var_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, 
     if (!field) return "!ngx_array_push";
     field->value = elts[1];
     field->json = field->value.data[0] == '$'
-       && ((field->value.len - 1 == sizeof("json_headers") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_headers", sizeof("json_headers") - 1))
+       && ((field->value.len - 1 == sizeof("json_response_headers") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_response_headers", sizeof("json_response_headers") - 1))
+        || (field->value.len - 1 == sizeof("json_headers") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_headers", sizeof("json_headers") - 1))
         || (field->value.len - 1 == sizeof("json_cookies") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_cookies", sizeof("json_cookies") - 1))
         || (field->value.len - 1 == sizeof("json_get_vars") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_get_vars", sizeof("json_get_vars") - 1))
         || (field->value.len - 1 == sizeof("json_post_vars") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_post_vars", sizeof("json_post_vars") - 1)));
