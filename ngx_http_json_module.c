@@ -240,7 +240,7 @@ static ngx_int_t ngx_http_json_cookies(ngx_http_request_t *r, ngx_http_variable_
     return NGX_OK;
 }
 
-static ngx_array_t *ngx_http_json_vars_array(ngx_http_request_t *r, u_char *start, u_char *end) {
+static ngx_array_t *ngx_http_json_get_vars_array(ngx_http_request_t *r, u_char *start, u_char *end) {
     ngx_array_t *array = ngx_array_create(r->pool, 4, sizeof(ngx_http_json_key_value_t));
     if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
     while (start < end) {
@@ -284,8 +284,8 @@ static ngx_array_t *ngx_http_json_vars_array(ngx_http_request_t *r, u_char *star
 }
 
 static ngx_int_t ngx_http_json_get_vars(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
-    ngx_array_t *array = ngx_http_json_vars_array(r, r->args.data, r->args.data + r->args.len);
-    if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_vars_array"); return NGX_ERROR; }
+    ngx_array_t *array = ngx_http_json_get_vars_array(r, r->args.data, r->args.data + r->args.len);
+    if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_get_vars_array"); return NGX_ERROR; }
     v->len = ngx_http_json_len(r, array);
     if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
     if (ngx_http_json_data(r, array, v->data) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_data != v->data + v->len"); return NGX_ERROR; }
@@ -295,49 +295,34 @@ static ngx_int_t ngx_http_json_get_vars(ngx_http_request_t *r, ngx_http_variable
     return NGX_OK;
 }
 
-static size_t ngx_http_json_post_vars_len(ngx_http_request_t *r, ngx_str_t *boundary, u_char *start, u_char *end) {
-    size_t len = 0;
-    for (u_char *value; start < end; start += 2) {
-        if (ngx_strncmp(start, boundary->data + 2, boundary->len - 2)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_strncmp"); return len; }
+static ngx_array_t *ngx_http_json_post_vars_array(ngx_http_request_t *r, ngx_str_t *boundary, u_char *start, u_char *end) {
+    ngx_array_t *array = ngx_array_create(r->pool, 4, sizeof(ngx_http_json_key_value_t));
+    if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
+    for (u_char *val; start < end; start += 2) {
+        if (ngx_strncmp(start, boundary->data + 2, boundary->len - 2)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_strncmp"); return NULL; }
         start += boundary->len - 2;
         if (ngx_strncmp(start, (u_char *)"\r\nContent-Disposition: form-data; name=\"=", sizeof("\r\nContent-Disposition: form-data; name=\"") - 1)) break;
-        if (len) len++;
         start += sizeof("\r\nContent-Disposition: form-data; name=\"") - 1;
-        if (!(value = ngx_strstrn(start, "\"\r\n\r\n", sizeof("\"\r\n\r\n") - 1 - 1))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_strstrn"); return len; }
-        len++;
-        len += value - start + ngx_escape_json(NULL, start, value - start);
-        len++; len++;
-        value += sizeof("\"\r\n\r\n") - 1;
-        if (!(start = ngx_strstrn(value, (char *)boundary->data, boundary->len - 1))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_strstrn"); return len; }
-        len++;
-        len += start - value + ngx_escape_json(NULL, value, start - value);
-        len++;
+        if (!(val = ngx_strstrn(start, "\"\r\n\r\n", sizeof("\"\r\n\r\n") - 1 - 1))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_strstrn"); return NULL; }
+        ngx_str_t key = {val - start, start};
+        ngx_http_json_key_value_t *key_value = array->elts;
+        ngx_uint_t j;
+        for (j = 0; j < array->nelts; j++) if (key.len == key_value[j].key.len && !ngx_strncasecmp(key.data, key_value[j].key.data, key.len)) { key_value = &key_value[j]; break; }
+        if (j == array->nelts) key_value = NULL;
+        if (!key_value) {
+            if (!(key_value = ngx_array_push(array))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_push"); return NULL; }
+            ngx_memzero(key_value, sizeof(ngx_http_json_key_value_t));
+        }
+        if (!key_value->value.elts && ngx_array_init(&key_value->value, r->pool, 1, sizeof(ngx_str_t)) != NGX_OK) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_array_init != NGX_OK"); return NULL; }
+        ngx_str_t *value = ngx_array_push(&key_value->value);
+        if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_push"); return NULL; }
+        key_value->key = key;
+        val += sizeof("\"\r\n\r\n") - 1;
+        if (!(start = ngx_strstrn(val, (char *)boundary->data, boundary->len - 1))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_strstrn"); return NULL; }
+        value->data = val;
+        value->len = start - val;
     }
-    len += sizeof("{}") - 1;
-    return len;
-}
-
-static u_char *ngx_http_json_post_vars_data(ngx_http_request_t *r, u_char *p, ngx_str_t *boundary, u_char *start, u_char *end) {
-    *p++ = '{';
-    u_char *body = p;
-    for (u_char *value; start < end; start += 2) {
-        if (ngx_strncmp(start, boundary->data + 2, boundary->len - 2)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_strncmp"); return p; }
-        start += boundary->len - 2;
-        if (ngx_strncmp(start, (u_char *)"\r\nContent-Disposition: form-data; name=\"=", sizeof("\r\nContent-Disposition: form-data; name=\"") - 1)) break;
-        if (p != body) *p++ = ',';
-        start += sizeof("\r\nContent-Disposition: form-data; name=\"") - 1;
-        if (!(value = ngx_strstrn(start, "\"\r\n\r\n", sizeof("\"\r\n\r\n") - 1 - 1))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_strstrn"); return p; }
-        *p++ = '"';
-        p = (u_char*)ngx_escape_json(p, start, value - start);
-        *p++ = '"'; *p++ = ':';
-        value += sizeof("\"\r\n\r\n") - 1;
-        if (!(start = ngx_strstrn(value, (char *)boundary->data, boundary->len - 1))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_strstrn"); return p; }
-        *p++ = '"';
-        p = (u_char*)ngx_escape_json(p, value, start - value);
-        *p++ = '"';
-    }
-    *p++ = '}';
-    return p;
+    return array;
 }
 
 static ngx_buf_t *ngx_http_json_read_request_body_to_buffer(ngx_http_request_t *r) {
@@ -376,8 +361,8 @@ static ngx_int_t ngx_http_json_post_vars(ngx_http_request_t *r, ngx_http_variabl
     ngx_http_json_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_json_module);
     switch (ctx->content_type) {
         case NGX_JSON_APPLICATION_X_WWW_FORM_URLENCODED: {
-            ngx_array_t *array = ngx_http_json_vars_array(r, buf->pos, buf->last);
-            if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_vars_array"); return NGX_ERROR; }
+            ngx_array_t *array = ngx_http_json_get_vars_array(r, buf->pos, buf->last);
+            if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_get_vars_array"); return NGX_ERROR; }
             v->len = ngx_http_json_len(r, array);
             if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
             if (ngx_http_json_data(r, array, v->data) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_data != v->data + v->len"); return NGX_ERROR; }
@@ -396,9 +381,11 @@ static ngx_int_t ngx_http_json_post_vars(ngx_http_request_t *r, ngx_http_variabl
             ngx_memcpy(boundary_data + 4, r->headers_in.content_type->value.data + sizeof("multipart/form-data; boundary=") - 1, boundary_len);
             boundary_len += 4;
             ngx_str_t boundary = {boundary_len, boundary_data};
-            if (!(v->len = ngx_http_json_post_vars_len(r, &boundary, buf->pos, buf->last))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_post_vars_len"); return NGX_ERROR; }
+            ngx_array_t *array = ngx_http_json_post_vars_array(r, &boundary, buf->pos, buf->last);
+            if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_get_vars_array"); return NGX_ERROR; }
+            v->len = ngx_http_json_len(r, array);
             if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-            if (ngx_http_json_post_vars_data(r, v->data, &boundary, buf->pos, buf->last) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_post_vars_data != v->data + v->len"); return NGX_ERROR; }
+            if (ngx_http_json_data(r, array, v->data) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_data != v->data + v->len"); return NGX_ERROR; }
         } break;
         default: ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "unsupported content type %V", &r->headers_in.content_type->value); ngx_str_set(v, "{}"); break;
     }
