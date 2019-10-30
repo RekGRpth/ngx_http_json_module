@@ -248,6 +248,13 @@ static ngx_array_t *ngx_http_json_vars_array(ngx_http_request_t *r, u_char *star
         ngx_str_t key;
         for (key.data = start; start < end && *start != '=' && *start != '&'; start++);
         key.len = start - key.data;
+        u_char *src = key.data;
+        u_char *dst = ngx_pnalloc(r->pool, key.len);
+        if (!dst) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NULL; }
+        ngx_memcpy(dst, key.data, key.len);
+        key.data = dst;
+        ngx_unescape_uri(&dst, &src, key.len, NGX_UNESCAPE_URI);
+        key.len = dst - key.data;
         ngx_http_json_key_value_t *key_value = array->elts;
         ngx_uint_t j;
         for (j = 0; j < array->nelts; j++) if (key.len == key_value[j].key.len && !ngx_strncasecmp(key.data, key_value[j].key.data, key.len)) { key_value = &key_value[j]; break; }
@@ -260,13 +267,6 @@ static ngx_array_t *ngx_http_json_vars_array(ngx_http_request_t *r, u_char *star
         ngx_str_t *value = ngx_array_push(&key_value->value);
         if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_push"); return NULL; }
         ngx_str_null(value);
-        u_char *src = key.data;
-        u_char *dst = ngx_pnalloc(r->pool, key.len);
-        if (!dst) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NULL; }
-        ngx_memcpy(dst, key.data, key.len);
-        key.data = dst;
-        ngx_unescape_uri(&dst, &src, key.len, NGX_UNESCAPE_URI);
-        key.len = dst - key.data;
         key_value->key = key;
         if (start < end && *start++ != '&') {
             for (value->data = start; start < end && *start != '&'; start++);
@@ -278,8 +278,6 @@ static ngx_array_t *ngx_http_json_vars_array(ngx_http_request_t *r, u_char *star
             value->data = dst;
             ngx_unescape_uri(&dst, &src, value->len, NGX_UNESCAPE_URI);
             value->len = dst - value->data;
-//        } else {
-//            ngx_str_set(value, "null");
         }
     }
     return array;
