@@ -493,6 +493,8 @@ static ngx_int_t ngx_http_json_postconfiguration(ngx_conf_t *cf) {
     ngx_http_handler_pt *handler = ngx_array_push(&core_main_conf->phases[NGX_HTTP_POST_READ_PHASE].handlers);
     if (!handler) return NGX_ERROR;
     *handler = ngx_http_json_handler;
+    ngx_http_core_loc_conf_t *core_loc_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+    core_loc_conf->client_body_in_single_buffer = 1;
     return NGX_OK;
 }
 
