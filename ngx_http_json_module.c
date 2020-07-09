@@ -288,11 +288,19 @@ static ngx_array_t *ngx_http_json_post_vars_array(ngx_http_request_t *r, ngx_str
         start += boundary->len - 2;
         if (ngx_strncmp(start, (u_char *)"\r\nContent-Disposition: form-data; name=\"=", sizeof("\r\nContent-Disposition: form-data; name=\"") - 1)) break;
         start += sizeof("\r\nContent-Disposition: form-data; name=\"") - 1;
-        if (!(val = ngx_strstrn(start, "\"\r\n\r\n", sizeof("\"\r\n\r\n") - 1 - 1))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_strstrn"); return NULL; }
-        ngx_str_t key = {val - start, start};
+        ngx_str_t key;
+        if ((val = ngx_strstrn(start, "\";", sizeof("\";") - 1 - 1))) {
+            key.len = val - start;
+            key.data = start;
+            if (!(val = ngx_strstrn(start, "\r\n\r\n", sizeof("\r\n\r\n") - 1 - 1))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_strstrn"); return NULL; }
+            val += sizeof("\r\n\r\n") - 1;
+        } else if ((val = ngx_strstrn(start, "\"\r\n\r\n", sizeof("\"\r\n\r\n") - 1 - 1))) {
+            key.len = val - start;
+            key.data = start;
+            val += sizeof("\"\r\n\r\n") - 1;
+        } else { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_strstrn"); return NULL; }
         ngx_str_t *value = ngx_http_json_value(r, array, &key);
         if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_value"); return NULL; }
-        val += sizeof("\"\r\n\r\n") - 1;
         if (!(start = ngx_strstrn(val, (char *)boundary->data, boundary->len - 1))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_strstrn"); return NULL; }
         value->data = val;
         value->len = start - val;
