@@ -4,7 +4,11 @@
 ngx_module_t ngx_http_json_module;
 
 typedef struct {
-    ngx_flag_t read_request_body;
+    ngx_flag_t used;
+} ngx_http_json_loc_conf_t;
+
+typedef struct {
+    ngx_flag_t used;
 } ngx_http_json_main_conf_t;
 
 typedef struct {
@@ -456,7 +460,7 @@ static ngx_int_t ngx_http_json_preconfiguration(ngx_conf_t *cf) {
         }
         if (var->get_handler == ngx_http_json_post_vars) {
             ngx_http_json_main_conf_t *main_conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_json_module);
-            main_conf->read_request_body = 1;
+            main_conf->used = 1;
         }
     }
     return NGX_OK;
@@ -470,6 +474,9 @@ static void ngx_http_json_post_read(ngx_http_request_t *r) {
 }
 
 static ngx_int_t ngx_http_json_handler(ngx_http_request_t *r) {
+    ngx_http_json_loc_conf_t *loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_json_module);
+    if (!loc_conf->used) return NGX_DECLINED;
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
     ngx_http_json_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_json_module);
     if (ctx) {
         if (ctx->done) { ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "ctx->done"); return NGX_DECLINED; }
@@ -496,9 +503,9 @@ static ngx_int_t ngx_http_json_handler(ngx_http_request_t *r) {
 
 static ngx_int_t ngx_http_json_postconfiguration(ngx_conf_t *cf) {
     ngx_http_json_main_conf_t *main_conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_json_module);
-    if (!main_conf->read_request_body) return NGX_OK;
+    if (!main_conf->used) return NGX_OK;
     ngx_http_core_main_conf_t *core_main_conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
-    ngx_http_handler_pt *handler = ngx_array_push(&core_main_conf->phases[NGX_HTTP_POST_READ_PHASE].handlers);
+    ngx_http_handler_pt *handler = ngx_array_push(&core_main_conf->phases[NGX_HTTP_REWRITE_PHASE].handlers);
     if (!handler) return NGX_ERROR;
     *handler = ngx_http_json_handler;
     ngx_http_core_loc_conf_t *core_loc_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
@@ -633,6 +640,8 @@ static char *ngx_http_json_var_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, 
 }
 
 static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
+    ngx_http_json_loc_conf_t *loc_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_json_module);
+    loc_conf->used = 1;
     ngx_str_t *elts = cf->args->elts;
     ngx_str_t name = elts[1];
     if (name.data[0] != '$') return "invalid variable name";
@@ -795,6 +804,20 @@ static ngx_command_t ngx_http_json_commands[] = {
     ngx_null_command
 };
 
+static void *ngx_http_json_create_loc_conf(ngx_conf_t *cf) {
+    ngx_http_json_loc_conf_t *loc_conf = ngx_pcalloc(cf->pool, sizeof(*loc_conf));
+    if (!loc_conf) { ngx_log_error(NGX_LOG_EMERG, cf->log, 0, "!ngx_pcalloc"); return NULL; }
+    loc_conf->used = NGX_CONF_UNSET;
+    return loc_conf;
+}
+
+static char *ngx_http_json_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
+    ngx_http_json_loc_conf_t *prev = parent;
+    ngx_http_json_loc_conf_t *conf = child;
+    ngx_conf_merge_value(conf->used, prev->used, 0);
+    return NGX_CONF_OK;
+}
+
 static ngx_http_module_t ngx_http_json_ctx = {
     .preconfiguration = ngx_http_json_preconfiguration,
     .postconfiguration = ngx_http_json_postconfiguration,
@@ -802,8 +825,8 @@ static ngx_http_module_t ngx_http_json_ctx = {
     .init_main_conf = NULL,
     .create_srv_conf = NULL,
     .merge_srv_conf = NULL,
-    .create_loc_conf = NULL,
-    .merge_loc_conf = NULL
+    .create_loc_conf = ngx_http_json_create_loc_conf,
+    .merge_loc_conf = ngx_http_json_merge_loc_conf
 };
 
 ngx_module_t ngx_http_json_module = {
