@@ -5,7 +5,7 @@ if test -n "$ngx_module_link"; then
     ngx_module_incs=
     ngx_module_deps=
     ngx_module_srcs="$ngx_addon_dir/ngx_http_json_module.c"
-    ngx_module_libs="-ljansson"
+    ngx_module_libs="-ljq"
 
     . auto/module
 else
