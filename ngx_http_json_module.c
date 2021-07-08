@@ -491,7 +491,6 @@ static void ngx_http_json_post_read(ngx_http_request_t *r) {
 }
 
 static ngx_int_t ngx_http_json_handler(ngx_http_request_t *r) {
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
     ngx_http_json_loc_conf_t *loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_json_module);
     if (!loc_conf->used) return NGX_DECLINED;
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
