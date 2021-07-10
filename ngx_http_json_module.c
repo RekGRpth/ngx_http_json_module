@@ -6,7 +6,7 @@ ngx_module_t ngx_http_json_module;
 
 typedef struct {
     ngx_flag_t used;
-} ngx_http_json_loc_conf_t;
+} ngx_http_json_location_t;
 
 typedef struct {
     ngx_flag_t used;
@@ -73,7 +73,7 @@ static ngx_str_t *ngx_http_json_value(ngx_http_request_t *r, ngx_array_t *array,
     if (j == array->nelts) elts = NULL;
     if (!elts) {
         if (!(elts = ngx_array_push(array))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_push"); return NULL; }
-        ngx_memzero(elts, sizeof(ngx_http_json_key_value_t));
+        ngx_memzero(elts, sizeof(*elts));
     }
     if (!elts->value.elts && ngx_array_init(&elts->value, r->pool, 1, sizeof(ngx_str_t)) != NGX_OK) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_array_init != NGX_OK"); return NULL; }
     ngx_str_t *value = ngx_array_push(&elts->value);
@@ -84,7 +84,7 @@ static ngx_str_t *ngx_http_json_value(ngx_http_request_t *r, ngx_array_t *array,
 
 static ngx_array_t *ngx_http_json_headers_array(ngx_http_request_t *r, ngx_list_part_t *part) {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
-    ngx_array_t *array = ngx_array_create(r->pool, 4, sizeof(ngx_http_json_key_value_t));
+    ngx_array_t *array = ngx_array_create(r->pool, 1, sizeof(ngx_http_json_key_value_t));
     if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
     for (; part; part = part->next) {
         ngx_table_elt_t *elts = part->elts;
@@ -217,7 +217,7 @@ static ngx_int_t ngx_http_json_parse(ngx_http_request_t *r, ngx_http_variable_va
 
 static ngx_array_t *ngx_http_json_cookies_array(ngx_http_request_t *r) {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
-    ngx_array_t *array = ngx_array_create(r->pool, 4, sizeof(ngx_http_json_key_value_t));
+    ngx_array_t *array = ngx_array_create(r->pool, 1, sizeof(ngx_http_json_key_value_t));
     if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
     ngx_table_elt_t **elts = r->headers_in.cookies.elts;
     for (ngx_uint_t i = 0; i < r->headers_in.cookies.nelts; i++) {
@@ -253,7 +253,7 @@ static ngx_int_t ngx_http_json_cookies(ngx_http_request_t *r, ngx_http_variable_
 
 static ngx_array_t *ngx_http_json_get_vars_array(ngx_http_request_t *r, u_char *start, u_char *end, ngx_array_t *array) {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
-    if (!array && !(array = ngx_array_create(r->pool, 4, sizeof(ngx_http_json_key_value_t)))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
+    if (!array && !(array = ngx_array_create(r->pool, 1, sizeof(ngx_http_json_key_value_t)))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
     while (start < end) {
         for (; start < end && (*start == '=' || *start == '&'); start++);
         ngx_str_t key;
@@ -299,7 +299,7 @@ static ngx_int_t ngx_http_json_get_vars(ngx_http_request_t *r, ngx_http_variable
 
 static ngx_array_t *ngx_http_json_post_vars_array(ngx_http_request_t *r, ngx_str_t *boundary, u_char *start, u_char *end, ngx_array_t *array) {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
-    if (!array && !(array = ngx_array_create(r->pool, 4, sizeof(ngx_http_json_key_value_t)))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
+    if (!array && !(array = ngx_array_create(r->pool, 1, sizeof(ngx_http_json_key_value_t)))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
     if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
     for (u_char *val; start < end; start += 2) {
         if (ngx_strncmp(start, boundary->data + 2, boundary->len - 2)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_strncmp"); return NULL; }
@@ -491,8 +491,8 @@ static void ngx_http_json_post_read(ngx_http_request_t *r) {
 }
 
 static ngx_int_t ngx_http_json_handler(ngx_http_request_t *r) {
-    ngx_http_json_loc_conf_t *loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_json_module);
-    if (!loc_conf->used) return NGX_DECLINED;
+    ngx_http_json_location_t *location = ngx_http_get_module_loc_conf(r, ngx_http_json_module);
+    if (!location->used) return NGX_DECLINED;
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
     ngx_http_json_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_json_module);
     if (ctx) {
@@ -501,7 +501,7 @@ static ngx_int_t ngx_http_json_handler(ngx_http_request_t *r) {
     }
     if (r->method != NGX_HTTP_POST && r->method != NGX_HTTP_PUT) return NGX_DECLINED;
     if (r->headers_in.content_type == NULL || r->headers_in.content_type->value.data == NULL) return NGX_DECLINED;
-    if (!(ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_json_ctx_t)))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pcalloc"); return NGX_ERROR; }
+    if (!(ctx = ngx_pcalloc(r->pool, sizeof(*ctx)))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pcalloc"); return NGX_ERROR; }
     if (r->headers_in.content_type->value.len == sizeof("application/x-www-form-urlencoded") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/x-www-form-urlencoded", sizeof("application/x-www-form-urlencoded") - 1)) {
         ctx->content_type = NGX_JSON_APPLICATION_X_WWW_FORM_URLENCODED;
     } else if (r->headers_in.content_type->value.len >= sizeof("application/json") - 1 && !ngx_strncasecmp(r->headers_in.content_type->value.data, (u_char *)"application/json", sizeof("application/json") - 1)) {
@@ -531,7 +531,7 @@ static ngx_int_t ngx_http_json_postconfiguration(ngx_conf_t *cf) {
 }
 
 static void *ngx_http_json_create_main_conf(ngx_conf_t *cf) {
-    ngx_http_json_main_conf_t *main_conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_json_main_conf_t));
+    ngx_http_json_main_conf_t *main_conf = ngx_pcalloc(cf->pool, sizeof(*main_conf));
     if (!main_conf) return NULL;
     return main_conf;
 }
@@ -691,8 +691,8 @@ static char *ngx_http_json_var_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, 
 }
 
 static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_http_json_loc_conf_t *loc_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_json_module);
-    loc_conf->used = 1;
+    ngx_http_json_location_t *location = ngx_http_conf_get_module_loc_conf(cf, ngx_http_json_module);
+    location->used = 1;
     ngx_str_t *args = cf->args->elts;
     ngx_str_t name = args[1];
     if (name.data[0] != '$') return "invalid variable name";
@@ -701,7 +701,7 @@ static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *co
     ngx_http_variable_t *var = ngx_http_add_variable(cf, &name, NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE);
     if (!var) return "!ngx_http_add_variable";
     var->get_handler = ngx_http_json_var_http_handler;
-    ngx_array_t *fields = ngx_array_create(cf->pool, 4, sizeof(ngx_http_json_var_field_t));
+    ngx_array_t *fields = ngx_array_create(cf->pool, 1, sizeof(ngx_http_json_var_field_t));
     if (!fields) return "!ngx_array_create";
     var->data = (uintptr_t)fields;
     ngx_conf_t save = *cf;
@@ -810,7 +810,7 @@ static char *ngx_http_json_var_parse_conf_handler(ngx_conf_t *cf, ngx_command_t 
 }
 
 static char *ngx_http_json_var_parse_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_array_t *fields = ngx_array_create(cf->pool, 4, sizeof(ngx_http_json_var_field_t));
+    ngx_array_t *fields = ngx_array_create(cf->pool, 1, sizeof(ngx_http_json_var_field_t));
     if (!fields) return "!ngx_array_create";
     ndk_set_var_t filter = {NDK_SET_VAR_DATA, ngx_http_json_var_parse_func, 0, fields};
     ngx_str_t *args = cf->args->elts;
@@ -856,15 +856,15 @@ static ngx_command_t ngx_http_json_commands[] = {
 };
 
 static void *ngx_http_json_create_loc_conf(ngx_conf_t *cf) {
-    ngx_http_json_loc_conf_t *loc_conf = ngx_pcalloc(cf->pool, sizeof(*loc_conf));
-    if (!loc_conf) { ngx_log_error(NGX_LOG_EMERG, cf->log, 0, "!ngx_pcalloc"); return NULL; }
-    loc_conf->used = NGX_CONF_UNSET;
-    return loc_conf;
+    ngx_http_json_location_t *location = ngx_pcalloc(cf->pool, sizeof(*location));
+    if (!location) { ngx_log_error(NGX_LOG_EMERG, cf->log, 0, "!ngx_pcalloc"); return NULL; }
+    location->used = NGX_CONF_UNSET;
+    return location;
 }
 
 static char *ngx_http_json_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
-    ngx_http_json_loc_conf_t *prev = parent;
-    ngx_http_json_loc_conf_t *conf = child;
+    ngx_http_json_location_t *prev = parent;
+    ngx_http_json_location_t *conf = child;
     ngx_conf_merge_value(conf->used, prev->used, 0);
     return NGX_CONF_OK;
 }
