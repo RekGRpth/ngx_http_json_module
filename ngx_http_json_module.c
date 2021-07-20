@@ -176,6 +176,12 @@ static ngx_int_t ngx_http_json_response_headers(ngx_http_request_t *r, ngx_http_
         if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_value"); return NGX_ERROR; }
         *value = ngx_cached_http_time;
     }
+    if (r->headers_out.content_type.len) {
+        ngx_str_t key = ngx_string("Content-Type");
+        ngx_str_t *value = ngx_http_json_value(r, array, &key);
+        if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_value"); return NGX_ERROR; }
+        *value = r->headers_out.content_type;
+    }
     v->len = ngx_http_json_len(r, array);
     if (!(v->data = ngx_pnalloc(r->pool, v->len))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
     if (ngx_http_json_data(r, array, v->data) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_data != v->data + v->len"); return NGX_ERROR; }
