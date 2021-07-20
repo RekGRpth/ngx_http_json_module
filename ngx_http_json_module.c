@@ -170,7 +170,7 @@ static ngx_int_t ngx_http_json_response_headers(ngx_http_request_t *r, ngx_http_
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
     ngx_array_t *array = ngx_http_json_headers_array(r, &r->headers_out.headers.part);
     if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_headers_array"); return NGX_ERROR; }
-    if (!r->headers_out.date ) {
+    if (!r->headers_out.date) {
         ngx_str_t key = ngx_string("Date");
         ngx_str_t *value = ngx_http_json_value(r, array, &key);
         if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_value"); return NGX_ERROR; }
