@@ -5,11 +5,11 @@
 ngx_module_t ngx_http_json_module;
 
 typedef struct {
-    ngx_flag_t used;
+    ngx_flag_t enable;
 } ngx_http_json_location_t;
 
 typedef struct {
-    ngx_flag_t used;
+    ngx_flag_t enable;
 } ngx_http_json_main_conf_t;
 
 typedef struct {
@@ -488,7 +488,7 @@ static ngx_int_t ngx_http_json_preconfiguration(ngx_conf_t *cf) {
         }
         if (var->get_handler == ngx_http_json_post_vars) {
             ngx_http_json_main_conf_t *main_conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_json_module);
-            main_conf->used = 1;
+            main_conf->enable = 1;
         }
     }
     return NGX_OK;
@@ -504,7 +504,7 @@ static void ngx_http_json_post_read(ngx_http_request_t *r) {
 
 static ngx_int_t ngx_http_json_handler(ngx_http_request_t *r) {
     ngx_http_json_location_t *location = ngx_http_get_module_loc_conf(r, ngx_http_json_module);
-    if (!location->used) return NGX_DECLINED;
+    if (!location->enable) return NGX_DECLINED;
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
     ngx_http_json_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_json_module);
     if (ctx) {
@@ -532,7 +532,7 @@ static ngx_int_t ngx_http_json_handler(ngx_http_request_t *r) {
 
 static ngx_int_t ngx_http_json_postconfiguration(ngx_conf_t *cf) {
     ngx_http_json_main_conf_t *main_conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_json_module);
-    if (!main_conf->used) return NGX_OK;
+    if (!main_conf->enable) return NGX_OK;
     ngx_http_core_main_conf_t *core_main_conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
     ngx_http_handler_pt *handler = ngx_array_push(&core_main_conf->phases[NGX_HTTP_REWRITE_PHASE].handlers);
     if (!handler) return NGX_ERROR;
@@ -704,7 +704,7 @@ static char *ngx_http_json_var_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, 
 
 static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_http_json_location_t *location = ngx_http_conf_get_module_loc_conf(cf, ngx_http_json_module);
-    location->used = 1;
+    location->enable = 1;
     ngx_str_t *args = cf->args->elts;
     ngx_str_t name = args[1];
     if (name.data[0] != '$') return "invalid variable name";
@@ -870,14 +870,14 @@ static ngx_command_t ngx_http_json_commands[] = {
 static void *ngx_http_json_create_loc_conf(ngx_conf_t *cf) {
     ngx_http_json_location_t *location = ngx_pcalloc(cf->pool, sizeof(*location));
     if (!location) { ngx_log_error(NGX_LOG_EMERG, cf->log, 0, "!ngx_pcalloc"); return NULL; }
-    location->used = NGX_CONF_UNSET;
+    location->enable = NGX_CONF_UNSET;
     return location;
 }
 
 static char *ngx_http_json_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
     ngx_http_json_location_t *prev = parent;
     ngx_http_json_location_t *conf = child;
-    ngx_conf_merge_value(conf->used, prev->used, 0);
+    ngx_conf_merge_value(conf->enable, prev->enable, 0);
     return NGX_CONF_OK;
 }
 
