@@ -10,7 +10,7 @@ typedef struct {
 
 typedef struct {
     ngx_flag_t enable;
-} ngx_http_json_server_t;
+} ngx_http_json_main_t;
 
 typedef struct {
     ngx_flag_t done;
@@ -487,8 +487,8 @@ static ngx_int_t ngx_http_json_preconfiguration(ngx_conf_t *cf) {
             var->data = (uintptr_t)index;
         }
         if (var->get_handler == ngx_http_json_post_vars) {
-            ngx_http_json_server_t *server = ngx_http_conf_get_module_srv_conf(cf, ngx_http_json_module);
-            server->enable = 1;
+            ngx_http_json_main_t *main = ngx_http_conf_get_module_main_conf(cf, ngx_http_json_module);
+            main->enable = 1;
         }
     }
     return NGX_OK;
@@ -531,8 +531,8 @@ static ngx_int_t ngx_http_json_handler(ngx_http_request_t *r) {
 }
 
 static ngx_int_t ngx_http_json_postconfiguration(ngx_conf_t *cf) {
-    ngx_http_json_server_t *server = ngx_http_conf_get_module_srv_conf(cf, ngx_http_json_module);
-    if (!server->enable) return NGX_OK;
+    ngx_http_json_main_t *main = ngx_http_conf_get_module_main_conf(cf, ngx_http_json_module);
+    if (!main->enable) return NGX_OK;
     ngx_http_core_main_conf_t *core_main_conf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
     ngx_http_handler_pt *handler = ngx_array_push(&core_main_conf->phases[NGX_HTTP_REWRITE_PHASE].handlers);
     if (!handler) return NGX_ERROR;
@@ -861,18 +861,10 @@ static ngx_command_t ngx_http_json_commands[] = {
     ngx_null_command
 };
 
-static void *ngx_http_json_create_srv_conf(ngx_conf_t *cf) {
-    ngx_http_json_server_t *server = ngx_pcalloc(cf->pool, sizeof(*server));
-    if (!server) return NULL;
-    server->enable = NGX_CONF_UNSET;
-    return server;
-}
-
-static char *ngx_http_json_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child) {
-    ngx_http_json_server_t *prev = parent;
-    ngx_http_json_server_t *conf = child;
-    ngx_conf_merge_value(conf->enable, prev->enable, 0);
-    return NGX_CONF_OK;
+static void *ngx_http_json_create_main_conf(ngx_conf_t *cf) {
+    ngx_http_json_main_t *main = ngx_pcalloc(cf->pool, sizeof(*main));
+    if (!main) return NULL;
+    return main;
 }
 
 static void *ngx_http_json_create_loc_conf(ngx_conf_t *cf) {
@@ -892,10 +884,10 @@ static char *ngx_http_json_merge_loc_conf(ngx_conf_t *cf, void *parent, void *ch
 static ngx_http_module_t ngx_http_json_ctx = {
     .preconfiguration = ngx_http_json_preconfiguration,
     .postconfiguration = ngx_http_json_postconfiguration,
-    .create_main_conf = NULL,
+    .create_main_conf = ngx_http_json_create_main_conf,
     .init_main_conf = NULL,
-    .create_srv_conf = ngx_http_json_create_srv_conf,
-    .merge_srv_conf = ngx_http_json_merge_srv_conf,
+    .create_srv_conf = NULL,
+    .merge_srv_conf = NULL,
     .create_loc_conf = ngx_http_json_create_loc_conf,
     .merge_loc_conf = ngx_http_json_merge_loc_conf
 };
