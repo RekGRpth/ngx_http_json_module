@@ -312,7 +312,7 @@ static ngx_int_t ngx_http_json_get_vars(ngx_http_request_t *r, ngx_http_variable
 static ngx_array_t *ngx_http_json_post_vars_array(ngx_http_request_t *r, ngx_str_t *boundary, u_char *start, u_char *end, ngx_array_t *array) {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
     if (!array && !(array = ngx_array_create(r->pool, 1, sizeof(ngx_http_json_key_value_t)))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
-    if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
+//    if (!array) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_array_create"); return NULL; }
     for (u_char *val; start < end; start += 2) {
         if (ngx_strncmp(start, boundary->data + 2, boundary->len - 2)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_strncmp"); return NULL; }
         start += boundary->len - 2;
