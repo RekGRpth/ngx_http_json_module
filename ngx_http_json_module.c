@@ -47,18 +47,6 @@ static void ngx_http_json_jv_free(jv *root) {
     jv_free(*root);
 }
 
-enum {
-    NGX_JSON_INVALID = JV_KIND_INVALID,
-    NGX_JSON_NULL = JV_KIND_NULL,
-    NGX_JSON_FALSE = JV_KIND_FALSE,
-    NGX_JSON_TRUE = JV_KIND_TRUE,
-    NGX_JSON_NUMBER = JV_KIND_NUMBER,
-    NGX_JSON_STRING = JV_KIND_STRING,
-    NGX_JSON_ARRAY = JV_KIND_ARRAY,
-    NGX_JSON_OBJECT = JV_KIND_OBJECT,
-    NGX_JSON_PARSE
-};
-
 static ngx_str_t *ngx_http_json_value(ngx_http_request_t *r, ngx_array_t *array, ngx_str_t *key) {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
     ngx_http_json_key_value_t *elts = array->elts;
