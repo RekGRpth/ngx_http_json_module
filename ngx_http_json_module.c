@@ -469,9 +469,7 @@ static ngx_http_variable_t ngx_http_json_variables[] = {
 };
 
 static ngx_int_t ngx_http_json_preconfiguration(ngx_conf_t *cf) {
-    ngx_http_json_location_t *location = ngx_http_conf_get_module_loc_conf(cf, ngx_http_json_module);
     for (ngx_http_variable_t *v = ngx_http_json_variables; v->name.len; v++) {
-        if (!ngx_strncasecmp(v->name.data, (u_char *)"json_post_vars", sizeof("json_post_vars") - 1)) location->enable = 1;
         ngx_http_variable_t *var = ngx_http_add_variable(cf, &v->name, v->flags);
         if (!var) return NGX_ERROR;
         *var = *v;
@@ -481,7 +479,7 @@ static ngx_int_t ngx_http_json_preconfiguration(ngx_conf_t *cf) {
             if (index == NGX_ERROR) return NGX_ERROR;
             var->data = (uintptr_t)index;
         }
-        if (var->get_handler == ngx_http_json_post_vars) {
+        if (var->get_handler == ngx_http_json_post_vars || var->get_handler == ngx_http_json_parse) {
             ngx_http_json_main_t *main = ngx_http_conf_get_module_main_conf(cf, ngx_http_json_module);
             main->enable = 1;
         }
