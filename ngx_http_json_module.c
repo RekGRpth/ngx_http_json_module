@@ -489,10 +489,9 @@ static ngx_int_t ngx_http_json_dump_func(ngx_http_request_t *r, ngx_str_t *val, 
     jq_start(jq, jv_copy(*input), 0);
     jv actual = jq_next(jq);
     if (!jv_is_valid(actual)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!jv_is_valid"); goto jq_teardown_jq; }
-    jv string = jv_dump_string(actual, flags_index->flags);
+    jv string = jv_get_kind(actual) == JV_KIND_STRING ? actual : jv_dump_string(actual, flags_index->flags);
     if (!jv_is_valid(string)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!jv_is_valid"); goto jv_free_string; }
     ngx_str_t value = {jv_string_length_bytes(jv_copy(string)), (u_char *)jv_string_value(string)};
-    if (jv_get_kind(actual) == JV_KIND_STRING) { value.data++; value.len -= 2; }
     val->data = ngx_pstrdup(r->pool, &value);
     val->len = value.len;
     rc = NGX_OK;
