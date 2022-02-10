@@ -1,5 +1,4 @@
-#include <jq.h>
-#include <jv.h>
+#include <jansson.h>
 #include <ngx_http.h>
 
 ngx_module_t ngx_http_json_module;
@@ -18,9 +17,9 @@ typedef struct {
 } ngx_http_json_ctx_t;
 
 typedef struct {
-    ngx_uint_t flags;
     ngx_uint_t index;
-} ngx_http_json_var_flags_index_t;
+    ngx_uint_t nelts;
+} ngx_http_json_var_index_nelts_t;
 
 typedef struct {
     ngx_http_complex_value_t cv;
@@ -43,8 +42,8 @@ typedef struct {
     ngx_array_t value;
 } ngx_http_json_key_value_t;
 
-static void ngx_http_json_jv_free(jv *root) {
-    jv_free(*root);
+static void ngx_http_json_json_object_clear(json_t *json) {
+    (int)json_object_clear(json);
 }
 
 static ngx_str_t *ngx_http_json_value(ngx_http_request_t *r, ngx_array_t *array, ngx_str_t *key) {
@@ -456,85 +455,55 @@ static ngx_int_t ngx_http_json_postconfiguration(ngx_conf_t *cf) {
     return NGX_OK;
 }
 
-static ngx_int_t ngx_http_json_load_func(ngx_http_request_t *r, ngx_str_t *val, ngx_http_variable_value_t *v) {
+static ngx_int_t ngx_http_json_loads_func(ngx_http_request_t *r, ngx_str_t *val, ngx_http_variable_value_t *v) {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
-    jv *root = ngx_palloc(r->pool, sizeof(*root));
-    if (!root) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_palloc"); return NGX_ERROR; }
-    *root = jv_parse_sized((const char *)v->data, v->len);
+    json_error_t error;
+    json_t *json = json_loadb((char *)v->data, v->len, JSON_DECODE_ANY, &error);
+    if (!json) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!json_loadb: %s", error.text); return NGX_ERROR; }
     ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (!cln) { ngx_http_json_jv_free(root); ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pool_cleanup_add"); return NGX_ERROR; }
-    cln->handler = (ngx_pool_cleanup_pt)ngx_http_json_jv_free;
-    cln->data = root;
-    if (!jv_is_valid(*root)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!jv_is_valid"); return NGX_ERROR; }
-    val->data = (u_char *)root;
-    val->len = sizeof(*root);
+    if (!cln) { ngx_http_json_json_object_clear(json); ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pool_cleanup_add"); return NGX_ERROR; }
+    cln->handler = (ngx_pool_cleanup_pt)ngx_http_json_json_object_clear;
+    cln->data = json;
+    val->data = (u_char *)json;
+    val->len = sizeof(*json);
     return NGX_OK;
 }
 
-static ngx_int_t ngx_http_json_dump_func(ngx_http_request_t *r, ngx_str_t *val, ngx_http_variable_value_t *v, void *data) {
+static ngx_int_t ngx_http_json_dumps_func(ngx_http_request_t *r, ngx_str_t *val, ngx_http_variable_value_t *v, void *data) {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
-    ngx_http_json_var_flags_index_t *flags_index = data;
-    ngx_http_variable_value_t *vv = ngx_http_get_indexed_variable(r, flags_index->index);
+    ngx_http_json_var_index_nelts_t *index_nelts = data;
+    ngx_http_variable_value_t *vv = ngx_http_get_indexed_variable(r, index_nelts->index);
     if (!vv) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_get_indexed_variable"); return NGX_ERROR; }
     if (!vv->data) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!vv->data"); return NGX_ERROR; }
-    jv *input = (jv *)vv->data;
-    if (vv->len != sizeof(*input)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "vv->len != sizeof(*input)"); return NGX_ERROR; }
-    u_char *str = ngx_pnalloc(r->pool, v->len + 1);
-    if (!str) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-    (void)ngx_cpystrn(str, v->data, v->len + 1);
-    jq_state *jq = jq_init();
-    if (!jq) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!jq_init"); return NGX_ERROR; }
-    ngx_int_t rc = NGX_ERROR;
-    if (!(jq_compile(jq, (const char *)str))) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!jq_compile"); goto jq_teardown_jq; }
-    jq_start(jq, jv_copy(*input), 0);
-    jv actual = jq_next(jq);
-    if (!jv_is_valid(actual)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!jv_is_valid"); goto jq_teardown_jq; }
-    jv string = jv_get_kind(actual) == JV_KIND_STRING ? actual : jv_dump_string(actual, flags_index->flags);
-    if (!jv_is_valid(string)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!jv_is_valid"); goto jv_free_string; }
-    ngx_str_t value = {jv_string_length_bytes(jv_copy(string)), (u_char *)jv_string_value(string)};
-    val->data = ngx_pstrdup(r->pool, &value);
-    val->len = value.len;
-    rc = NGX_OK;
-jv_free_string:
-    jv_free(string);
-jq_teardown_jq:
-    jq_teardown(&jq);
-    return rc;
+    if (vv->len != sizeof(json_t)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "vv->len != sizeof(json_t)"); return NGX_ERROR; }
+    json_t *json = (json_t *)vv->data;
+    for (ngx_uint_t i = 0; json && i < index_nelts->nelts; i++) {
+        u_char *key = ngx_pnalloc(r->pool, v[i].len + 1);
+        if (!key) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+        (void)ngx_cpystrn(key, v[i].data, v[i].len + 1);
+        json = json_object_get(json, (const char *)key);
+    }
+    const char *value = index_nelts->nelts ? json_string_value(json) : json_dumps(json, JSON_PRESERVE_ORDER | JSON_ENCODE_ANY | JSON_COMPACT);
+    if (index_nelts->nelts && !value) { ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "!json_string_value"); value = json_dumps(json, JSON_PRESERVE_ORDER | JSON_ENCODE_ANY | JSON_COMPACT); }
+    if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!json_dumps"); return NGX_ERROR; }
+    val->data = (u_char *)value;
+    val->len = ngx_strlen(value);
+    return NGX_OK;
 }
 
-static char *ngx_http_json_dump_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_str_t *args = cf->args->elts;
-    if (args[2].data[0] != '$') return "invalid variable name";
-    args[2].len--;
-    args[2].data++;
-    ngx_int_t index = ngx_http_get_variable_index(cf, &args[2]);
+static char *ngx_http_json_dumps_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
+    ngx_str_t *elts = cf->args->elts;
+    if (elts[2].data[0] != '$') return "invalid variable name";
+    elts[2].len--;
+    elts[2].data++;
+    ngx_int_t index = ngx_http_get_variable_index(cf, &elts[2]);
     if (index == NGX_ERROR) return "ngx_http_get_variable_index == NGX_ERROR";
-    ngx_http_json_var_flags_index_t *flags_index = ngx_palloc(cf->pool, sizeof(*flags_index));
-    if (!flags_index) return "!ngx_palloc";
-    flags_index->index = (ngx_uint_t) index;
-    flags_index->flags = 0;
-    static const ngx_conf_bitmask_t b[] = {
-        { ngx_string("ASCII"), JV_PRINT_ASCII },
-        { ngx_string("COLOR"), JV_PRINT_COLOR },
-        { ngx_string("COLOUR"), JV_PRINT_COLOUR },
-        { ngx_string("INVALID"), JV_PRINT_INVALID },
-        { ngx_string("ISATTY"), JV_PRINT_ISATTY },
-        { ngx_string("PRETTY"), JV_PRINT_PRETTY },
-        { ngx_string("REFCOUNT"), JV_PRINT_REFCOUNT },
-        { ngx_string("SORTED"), JV_PRINT_SORTED },
-        { ngx_string("SPACE0"), JV_PRINT_SPACE0 },
-        { ngx_string("SPACE1"), JV_PRINT_SPACE1 },
-        { ngx_string("SPACE2"), JV_PRINT_SPACE2 },
-        { ngx_string("TAB"), JV_PRINT_TAB },
-        { ngx_null_string, 0 }
-    };
-    ngx_uint_t i, j;
-    for (j = 4; j < cf->args->nelts; j++) {
-        for (i = 0; b[i].name.len; i++) if (b[i].name.len == args[j].len && !ngx_strncasecmp(b[i].name.data, args[j].data, b[i].name.len)) { flags_index->flags |= b[i].mask; break; }
-        if (!b[i].name.len) { ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "\"%V\" directive error: value \"%V\" must be \"ASCII\", \"COLOR\", \"COLOUR\", \"INVALID\", \"ISATTY\", \"PRETTY\", \"REFCOUNT\", \"SORTED\", \"SPACE0\", \"SPACE1\", \"SPACE2\" or \"TAB\"", &cmd->name, &args[j]); return NGX_CONF_ERROR; }
-    }
-    ndk_set_var_t filter = { NDK_SET_VAR_VALUE_DATA, ngx_http_json_dump_func, 1, flags_index };
-    return ndk_set_var_multi_value_core(cf, &args[1], &args[3], &filter);
+    ngx_http_json_var_index_nelts_t *index_nelts = ngx_palloc(cf->pool, sizeof(ngx_http_json_var_index_nelts_t));
+    if (!index_nelts) return "!ngx_palloc";
+    index_nelts->index = (ngx_uint_t) index;
+    index_nelts->nelts = cf->args->nelts - 3;
+    ndk_set_var_t filter = { NDK_SET_VAR_MULTI_VALUE_DATA, ngx_http_json_dumps_func, index_nelts->nelts, index_nelts };
+    return ndk_set_var_multi_value_core(cf, &elts[1], &elts[3], &filter);
 }
 
 static size_t ngx_http_json_var_len(ngx_http_request_t *r, ngx_array_t *fields) {
@@ -638,18 +607,18 @@ static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *co
 }
 
 static ngx_command_t ngx_http_json_commands[] = {
-  { .name = ngx_string("json_dump"),
+  { .name = ngx_string("json_dumps"),
     .type = NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_2MORE,
-    .set = ngx_http_json_dump_conf,
+    .set = ngx_http_json_dumps_conf,
     .conf = NGX_HTTP_LOC_CONF_OFFSET,
     .offset = 0,
     .post = NULL },
-  { .name = ngx_string("json_load"),
+  { .name = ngx_string("json_loads"),
     .type = NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE2,
     .set = ndk_set_var_value,
     .conf = NGX_HTTP_LOC_CONF_OFFSET,
     .offset = 0,
-    .post = &(ndk_set_var_t){ NDK_SET_VAR_VALUE, ngx_http_json_load_func, 1, NULL } },
+    .post = &(ndk_set_var_t){ NDK_SET_VAR_VALUE, ngx_http_json_loads_func, 1, NULL } },
   { .name = ngx_string("json_var"),
     .type = NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_BLOCK|NGX_CONF_TAKE1,
     .set = ngx_http_json_var_conf,
