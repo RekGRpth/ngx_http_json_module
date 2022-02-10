@@ -397,12 +397,6 @@ static ngx_int_t ngx_http_json_preconfiguration(ngx_conf_t *cf) {
         ngx_http_variable_t *var = ngx_http_add_variable(cf, &v->name, v->flags);
         if (!var) return NGX_ERROR;
         *var = *v;
-        if (var->data) {
-            ngx_str_t *name = (ngx_str_t *)var->data;
-            ngx_int_t index = ngx_http_get_variable_index(cf, name);
-            if (index == NGX_ERROR) return NGX_ERROR;
-            var->data = (uintptr_t)index;
-        }
         if (var->get_handler == ngx_http_json_post_vars) {
             ngx_http_json_main_conf_t *hjmc = ngx_http_conf_get_module_main_conf(cf, ngx_http_json_module);
             hjmc->enable = 1;
