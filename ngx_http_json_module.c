@@ -42,10 +42,6 @@ typedef struct {
     ngx_array_t value;
 } ngx_http_json_key_value_t;
 
-static void ngx_http_json_json_object_clear(json_t *json) {
-    (int)json_object_clear(json);
-}
-
 static ngx_str_t *ngx_http_json_value(ngx_http_request_t *r, ngx_array_t *array, ngx_str_t *key) {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
     ngx_http_json_key_value_t *elts = array->elts;
@@ -461,8 +457,8 @@ static ngx_int_t ngx_http_json_loads_func(ngx_http_request_t *r, ngx_str_t *val,
     json_t *json = json_loadb((char *)v->data, v->len, JSON_DECODE_ANY, &error);
     if (!json) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!json_loadb: %s", error.text); return NGX_ERROR; }
     ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (!cln) { ngx_http_json_json_object_clear(json); ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pool_cleanup_add"); return NGX_ERROR; }
-    cln->handler = (ngx_pool_cleanup_pt)ngx_http_json_json_object_clear;
+    if (!cln) { json_decref(json); ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pool_cleanup_add"); return NGX_ERROR; }
+    cln->handler = (ngx_pool_cleanup_pt)json_decref;
     cln->data = json;
     val->data = (u_char *)json;
     val->len = sizeof(*json);
