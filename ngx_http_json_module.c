@@ -468,11 +468,21 @@ static ngx_int_t ngx_http_json_dumps_func(ngx_http_request_t *r, ngx_str_t *val,
     if (!vv->data) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!vv->data"); return NGX_ERROR; }
     if (vv->len != sizeof(json_t)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "vv->len != sizeof(json_t)"); return NGX_ERROR; }
     json_t *json = (json_t *)vv->data;
-    for (ngx_uint_t i = 0; json && i < index_nelts->nelts; i++) {
-        u_char *key = ngx_pnalloc(r->pool, v[i].len + 1);
-        if (!key) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-        (void)ngx_cpystrn(key, v[i].data, v[i].len + 1);
-        json = json_object_get(json, (const char *)key);
+    if (json_is_object(json) || json_is_array(json)) {
+        for (ngx_uint_t i = 0; json && i < index_nelts->nelts; i++) switch (json_typeof(json)) {
+            case JSON_OBJECT: {
+                u_char *key = ngx_pnalloc(r->pool, v[i].len + 1);
+                if (!key) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+                (void)ngx_cpystrn(key, v[i].data, v[i].len + 1);
+                json = json_object_get(json, (const char *)key);
+            } break;
+            case JSON_ARRAY: {
+                ngx_int_t index = ngx_atoi(v[i].data, v[i].len);
+                if (index == NGX_ERROR) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_atoi = NGX_ERROR"); return NGX_ERROR; }
+                json = json_array_get(json, (size_t)index);
+            } break;
+            default: break;
+        }
     }
     const char *value = index_nelts->nelts ? json_string_value(json) : json_dumps(json, JSON_PRESERVE_ORDER | JSON_ENCODE_ANY | JSON_COMPACT);
     if (index_nelts->nelts && !value) { ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "!json_string_value"); value = json_dumps(json, JSON_PRESERVE_ORDER | JSON_ENCODE_ANY | JSON_COMPACT); }
