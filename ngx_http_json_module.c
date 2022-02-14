@@ -1,6 +1,7 @@
-#include <jansson.h>
-#include <ndk.h>
 #include <ngx_http.h>
+#include <ndk.h>
+
+#include <jansson.h>
 
 ngx_module_t ngx_http_json_module;
 
