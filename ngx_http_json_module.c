@@ -507,106 +507,6 @@ static char *ngx_http_json_dumps_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *
     return ndk_set_var_multi_value_core(cf, &elts[1], &elts[3], &filter);
 }
 
-static size_t ngx_http_json_var_len(ngx_http_request_t *r, ngx_array_t *fields) {
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
-    size_t len = 0;
-    ngx_http_json_var_field_t *args = fields->elts;
-    for (ngx_uint_t i = 0; i < fields->nelts; i++) {
-        if (!args[i].name.len) continue;
-        if (ngx_http_complex_value(r, &args[i].cv, &args[i].value) != NGX_OK) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_complex_value != NGX_OK"); return NGX_ERROR; }
-        if (!args[i].value.len) continue;
-        if (len) len++;
-        len += sizeof("\"\":") - 1 + args[i].name.len;
-        if (args[i].json) len += args[i].value.len; else {
-            args[i].escape = ngx_escape_json(NULL, args[i].value.data, args[i].value.len);
-            len += sizeof("\"\"") - 1 + args[i].value.len + args[i].escape;
-        }
-    }
-    len += sizeof("{}") - 1;
-    return len;
-}
-
-static u_char *ngx_http_json_var_data(u_char *p, ngx_array_t *fields) {
-    *p++ = '{';
-    u_char *var = p;
-    ngx_http_json_var_field_t *args = fields->elts;
-    for (ngx_uint_t i = 0; i < fields->nelts; i++) {
-        if (!args[i].name.len) continue;
-        if (!args[i].value.len) continue;
-        if (p != var) *p++ = ',';
-        *p++ = '"';
-        p = ngx_copy(p, args[i].name.data, args[i].name.len);
-        *p++ = '"';
-        *p++ = ':';
-        if (args[i].json) p = ngx_copy(p, args[i].value.data, args[i].value.len); else {
-            *p++ = '"';
-            if (args[i].escape) p = (u_char *)ngx_escape_json(p, args[i].value.data, args[i].value.len);
-            else p = ngx_copy(p, args[i].value.data, args[i].value.len);
-            *p++ = '"';
-        }
-    }
-    *p++ = '}';
-    return p;
-}
-
-static ngx_int_t ngx_http_json_var_http_handler(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
-    ngx_array_t *fields = (ngx_array_t *)data;
-    v->len = ngx_http_json_var_len(r, fields);
-    if (!(v->data = ngx_pnalloc(r->pool, v->len))){ ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
-    if (ngx_http_json_var_data(v->data, fields) != v->data + v->len) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_http_json_var_data != v->data + v->len"); return NGX_ERROR; }
-    v->valid = 1;
-    v->no_cacheable = 0;
-    v->not_found = 0;
-    return NGX_OK;
-}
-
-static char *ngx_http_json_var_conf_handler(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_str_t *args = cf->args->elts;
-    if (cf->args->nelts != 2) return "cf->args->nelts != 2";
-    ngx_http_json_var_ctx_t *ctx = cf->ctx;
-    ngx_http_json_var_field_t *field = ngx_array_push(ctx->fields);
-    if (!field) return "!ngx_array_push";
-    field->value = args[1];
-    field->json = field->value.data[0] == '$'
-       && ((field->value.len - 1 == sizeof("json_response_headers") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_response_headers", sizeof("json_response_headers") - 1))
-        || (field->value.len - 1 == sizeof("json_headers") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_headers", sizeof("json_headers") - 1))
-        || (field->value.len - 1 == sizeof("json_cookies") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_cookies", sizeof("json_cookies") - 1))
-        || (field->value.len - 1 == sizeof("json_get_vars") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_get_vars", sizeof("json_get_vars") - 1))
-        || (field->value.len - 1 == sizeof("json_post_vars") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_post_vars", sizeof("json_post_vars") - 1)));
-    if (field->value.len - 1 == sizeof("json_post_vars") - 1 && !ngx_strncasecmp(field->value.data + 1, (u_char *)"json_post_vars", sizeof("json_post_vars") - 1)) ctx->conf->enable = 1;
-    ngx_http_compile_complex_value_t ccv = {ctx->cf, &field->value, &field->cv, 0, 0, 0};
-    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) return "ngx_http_compile_complex_value != NGX_OK";
-    field->name = args[0];
-    return NGX_CONF_OK;
-}
-
-static char *ngx_http_json_var_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_str_t *args = cf->args->elts;
-    ngx_str_t name = args[1];
-    if (name.data[0] != '$') return "invalid variable name";
-    name.len--;
-    name.data++;
-    ngx_http_variable_t *var = ngx_http_add_variable(cf, &name, NGX_HTTP_VAR_NOCACHEABLE|NGX_HTTP_VAR_CHANGEABLE);
-    if (!var) return "!ngx_http_add_variable";
-    var->get_handler = ngx_http_json_var_http_handler;
-    ngx_array_t *fields = ngx_array_create(cf->pool, 1, sizeof(ngx_http_json_var_field_t));
-    if (!fields) return "!ngx_array_create";
-    var->data = (uintptr_t)fields;
-    ngx_conf_t save = *cf;
-    ngx_http_json_var_ctx_t ctx = {
-        .cf = &save,
-        .conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_json_module),
-        .fields = fields,
-    };
-    cf->ctx = &ctx;
-    cf->handler = ngx_http_json_var_conf_handler;
-    char *rv = ngx_conf_parse(cf, NULL);
-    *cf = save;
-    if (rv != NGX_CONF_OK) return rv;
-    return rv;
-}
-
 static ngx_command_t ngx_http_json_commands[] = {
   { .name = ngx_string("json_dumps"),
     .type = NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_2MORE,
@@ -620,12 +520,6 @@ static ngx_command_t ngx_http_json_commands[] = {
     .conf = NGX_HTTP_LOC_CONF_OFFSET,
     .offset = 0,
     .post = &(ndk_set_var_t){ NDK_SET_VAR_VALUE, ngx_http_json_loads_func, 1, NULL } },
-  { .name = ngx_string("json_var"),
-    .type = NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_BLOCK|NGX_CONF_TAKE1,
-    .set = ngx_http_json_var_conf,
-    .conf = 0,
-    .offset = 0,
-    .post = NULL },
     ngx_null_command
 };
 
