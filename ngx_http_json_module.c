@@ -48,11 +48,19 @@ static ngx_int_t ngx_http_json_dumps_func(ngx_http_request_t *r, ngx_str_t *val,
             default: break;
         }
     }
+    ngx_flag_t dumped = !index_nelts->nelts;
     const char *value = index_nelts->nelts ? json_string_value(json) : json_dumps(json, JSON_PRESERVE_ORDER | JSON_ENCODE_ANY | JSON_COMPACT);
-    if (index_nelts->nelts && !value) { ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "!json_string_value"); value = json_dumps(json, JSON_PRESERVE_ORDER | JSON_ENCODE_ANY | JSON_COMPACT); }
+    if (index_nelts->nelts && !value) { ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "!json_string_value"); value = json_dumps(json, JSON_PRESERVE_ORDER | JSON_ENCODE_ANY | JSON_COMPACT); dumped = 1; }
     if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!json_dumps"); return NGX_ERROR; }
-    val->data = (u_char *)value;
     val->len = ngx_strlen(value);
+    if (dumped) {
+        val->data = ngx_pnalloc(r->pool, val->len);
+        if (!val->data) { free((void *)value); ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); return NGX_ERROR; }
+        ngx_memcpy(val->data, value, val->len);
+        free((void *)value);
+    } else {
+        val->data = (u_char *)value;
+    }
     return NGX_OK;
 }
 
