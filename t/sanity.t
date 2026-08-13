@@ -62,7 +62,58 @@ GET /echo
 y
 
 
-=== TEST 4: json_dumps on a variable never produced by json_loads fails cleanly instead of dereferencing it as a pointer
+=== TEST 4: json_dumps on a missing object key yields an empty value instead of a 500
+--- main_config
+    load_module /var/cache/nginx/src/nginx/objs/ndk_http_module.so;
+    load_module /var/cache/nginx/src/nginx/objs/ngx_http_json_module.so;
+--- config
+    location /echo {
+        set $token '{"a":1}';
+        json_loads $token_json $token;
+        json_dumps $missing $token_json b;
+        return 200 "[$missing]";
+    }
+--- request
+GET /echo
+--- response_body chomp
+[]
+
+
+=== TEST 5: json_dumps on an out-of-range array index yields an empty value instead of a 500
+--- main_config
+    load_module /var/cache/nginx/src/nginx/objs/ndk_http_module.so;
+    load_module /var/cache/nginx/src/nginx/objs/ngx_http_json_module.so;
+--- config
+    location /echo {
+        set $token '{"items":["x"]}';
+        json_loads $token_json $token;
+        json_dumps $missing $token_json items 5;
+        return 200 "[$missing]";
+    }
+--- request
+GET /echo
+--- response_body chomp
+[]
+
+
+=== TEST 6: json_dumps on a key whose value is JSON null still dumps the literal null
+--- main_config
+    load_module /var/cache/nginx/src/nginx/objs/ndk_http_module.so;
+    load_module /var/cache/nginx/src/nginx/objs/ngx_http_json_module.so;
+--- config
+    location /echo {
+        set $token '{"a":null}';
+        json_loads $token_json $token;
+        json_dumps $out $token_json a;
+        return 200 $out;
+    }
+--- request
+GET /echo
+--- response_body chomp
+null
+
+
+=== TEST 7: json_dumps on a variable never produced by json_loads fails cleanly instead of dereferencing it as a pointer
 --- main_config
     load_module /var/cache/nginx/src/nginx/objs/ndk_http_module.so;
     load_module /var/cache/nginx/src/nginx/objs/ngx_http_json_module.so;
@@ -79,7 +130,7 @@ GET /echo
 !ngx_http_json_box_t magic
 
 
-=== TEST 5: json_dumps rejects a source variable of the wrong length outright
+=== TEST 8: json_dumps rejects a source variable of the wrong length outright
 --- main_config
     load_module /var/cache/nginx/src/nginx/objs/ndk_http_module.so;
     load_module /var/cache/nginx/src/nginx/objs/ngx_http_json_module.so;
