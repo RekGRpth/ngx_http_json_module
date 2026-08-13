@@ -17,6 +17,10 @@ typedef struct {
     json_t  *json;
 } ngx_http_json_box_t;
 
+static void ngx_http_json_cleanup(void *data) {
+    json_decref((json_t *)data);
+}
+
 static ngx_int_t ngx_http_json_loads_func(ngx_http_request_t *r, ngx_str_t *val, ngx_http_variable_value_t *v) {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
     json_error_t error;
@@ -24,7 +28,7 @@ static ngx_int_t ngx_http_json_loads_func(ngx_http_request_t *r, ngx_str_t *val,
     if (!json) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!json_loadb: %s", error.text); return NGX_ERROR; }
     ngx_pool_cleanup_t *cln = ngx_pool_cleanup_add(r->pool, 0);
     if (!cln) { json_decref(json); ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pool_cleanup_add"); return NGX_ERROR; }
-    cln->handler = (ngx_pool_cleanup_pt)json_decref;
+    cln->handler = ngx_http_json_cleanup;
     cln->data = json;
     ngx_http_json_box_t *box = ngx_palloc(r->pool, sizeof(ngx_http_json_box_t));
     if (!box) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_palloc"); return NGX_ERROR; }
