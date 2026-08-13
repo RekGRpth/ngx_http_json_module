@@ -1,0 +1,5 @@
+# editor-local settings
+.vscode/
+
+# Test::Nginx::Socket runtime dir
+t/servroot/
