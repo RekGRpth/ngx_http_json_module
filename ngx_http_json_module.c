@@ -10,6 +10,13 @@ typedef struct {
     ngx_uint_t nelts;
 } ngx_http_json_index_nelts_t;
 
+#define NGX_HTTP_JSON_MAGIC "NGXJSON1"
+
+typedef struct {
+    u_char   magic[8];
+    json_t  *json;
+} ngx_http_json_box_t;
+
 static ngx_int_t ngx_http_json_loads_func(ngx_http_request_t *r, ngx_str_t *val, ngx_http_variable_value_t *v) {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "%s", __func__);
     json_error_t error;
@@ -19,8 +26,12 @@ static ngx_int_t ngx_http_json_loads_func(ngx_http_request_t *r, ngx_str_t *val,
     if (!cln) { json_decref(json); ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pool_cleanup_add"); return NGX_ERROR; }
     cln->handler = (ngx_pool_cleanup_pt)json_decref;
     cln->data = json;
-    val->data = (u_char *)json;
-    val->len = sizeof(*json);
+    ngx_http_json_box_t *box = ngx_palloc(r->pool, sizeof(ngx_http_json_box_t));
+    if (!box) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_palloc"); return NGX_ERROR; }
+    ngx_memcpy(box->magic, NGX_HTTP_JSON_MAGIC, sizeof(box->magic));
+    box->json = json;
+    val->data = (u_char *)box;
+    val->len = sizeof(*box);
     return NGX_OK;
 }
 
@@ -30,8 +41,10 @@ static ngx_int_t ngx_http_json_dumps_func(ngx_http_request_t *r, ngx_str_t *val,
     ngx_http_variable_value_t *vv = ngx_http_get_indexed_variable(r, index_nelts->index);
     if (!vv) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_get_indexed_variable"); return NGX_ERROR; }
     if (!vv->data) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!vv->data"); return NGX_ERROR; }
-    if (vv->len != sizeof(json_t)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "vv->len != sizeof(json_t)"); return NGX_ERROR; }
-    json_t *json = (json_t *)vv->data;
+    if (vv->len != sizeof(ngx_http_json_box_t)) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "vv->len != sizeof(ngx_http_json_box_t)"); return NGX_ERROR; }
+    ngx_http_json_box_t *box = (ngx_http_json_box_t *)vv->data;
+    if (ngx_memcmp(box->magic, NGX_HTTP_JSON_MAGIC, sizeof(box->magic)) != 0) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_json_box_t magic"); return NGX_ERROR; }
+    json_t *json = box->json;
     if (json_is_object(json) || json_is_array(json)) {
         for (ngx_uint_t i = 0; json && i < index_nelts->nelts; i++) switch (json_typeof(json)) {
             case JSON_OBJECT: {
