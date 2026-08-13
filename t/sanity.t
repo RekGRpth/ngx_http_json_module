@@ -145,3 +145,87 @@ GET /echo
 --- error_code: 500
 --- error_log
 vv->len != sizeof(ngx_http_json_box_t)
+
+
+=== TEST 9: json_loads on invalid JSON fails cleanly
+--- main_config
+    load_module /var/cache/nginx/src/nginx/objs/ndk_http_module.so;
+    load_module /var/cache/nginx/src/nginx/objs/ngx_http_json_module.so;
+--- config
+    location /echo {
+        set $token 'not valid json';
+        json_loads $token_json $token;
+        return 200 ok;
+    }
+--- request
+GET /echo
+--- error_code: 500
+--- error_log
+!json_loadb
+
+
+=== TEST 10: json_dumps rejects a non-numeric array index
+--- main_config
+    load_module /var/cache/nginx/src/nginx/objs/ndk_http_module.so;
+    load_module /var/cache/nginx/src/nginx/objs/ngx_http_json_module.so;
+--- config
+    location /echo {
+        set $token '{"items":["x","y","z"]}';
+        json_loads $token_json $token;
+        json_dumps $out $token_json items foo;
+        return 200 ok;
+    }
+--- request
+GET /echo
+--- error_code: 500
+--- error_log
+ngx_atoi = NGX_ERROR
+
+
+=== TEST 11: json_dumps silently ignores extra path segments once the value is no longer a container
+--- main_config
+    load_module /var/cache/nginx/src/nginx/objs/ndk_http_module.so;
+    load_module /var/cache/nginx/src/nginx/objs/ngx_http_json_module.so;
+--- config
+    location /echo {
+        set $token '{"a":"b"}';
+        json_loads $token_json $token;
+        json_dumps $out $token_json a extra;
+        return 200 $out;
+    }
+--- request
+GET /echo
+--- response_body chomp
+b
+
+
+=== TEST 12: json_dumps on a source variable that was never computed fails cleanly
+--- main_config
+    load_module /var/cache/nginx/src/nginx/objs/ndk_http_module.so;
+    load_module /var/cache/nginx/src/nginx/objs/ngx_http_json_module.so;
+--- config
+    location /echo {
+        json_dumps $out $http_x_definitely_missing;
+        return 200 ok;
+    }
+--- request
+GET /echo
+--- error_code: 500
+--- error_log
+!vv->data
+
+
+=== TEST 13: json_dumps rejects a source variable name without a leading dollar sign
+--- main_config
+    load_module /var/cache/nginx/src/nginx/objs/ndk_http_module.so;
+    load_module /var/cache/nginx/src/nginx/objs/ngx_http_json_module.so;
+--- config
+    location /echo {
+        json_dumps $out token;
+        return 200 ok;
+    }
+--- request
+GET /echo
+--- must_die
+--- error_log
+invalid variable name
