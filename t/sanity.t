@@ -237,3 +237,33 @@ GET /login
 --- error_code: 303
 --- response_headers
 Set-Cookie: id_token=abc.def.ghi; Max-Age=36000
+
+
+=== TEST 15: json_loads rejects a destination variable name without a leading dollar sign
+--- main_config
+    load_module /etc/nginx/modules/ngx_http_json_module.so;
+--- config
+    location /echo {
+        json_loads token_json $token;
+        return 200 ok;
+    }
+--- request
+GET /echo
+--- must_die
+--- error_log
+invalid variable name
+
+
+=== TEST 16: json_dumps rejects a destination variable name without a leading dollar sign
+--- main_config
+    load_module /etc/nginx/modules/ngx_http_json_module.so;
+--- config
+    location /echo {
+        json_dumps out $token_json;
+        return 200 ok;
+    }
+--- request
+GET /echo
+--- must_die
+--- error_log
+invalid variable name
