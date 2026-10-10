@@ -284,3 +284,67 @@ invalid variable name
 GET /echo
 --- response_body chomp
 []
+
+
+
+=== TEST 18: the same variable name defined in two locations keeps each location's definition
+--- main_config
+    load_module /etc/nginx/modules/ngx_http_json_module.so;
+--- config
+    location /a {
+        set $token '{"k":"A","z":"Z"}';
+        json_loads $token_json $token;
+        json_dumps $out $token_json k;
+        return 200 $out;
+    }
+    location /b {
+        set $token '{"k":"B","z":"Z"}';
+        json_loads $token_json $token;
+        json_dumps $out $token_json z;
+        return 200 $out;
+    }
+--- request eval
+["GET /a", "GET /b"]
+--- response_body eval
+["A", "Z"]
+
+
+
+=== TEST 19: definitions are inherited from the server level and can be overridden per location
+--- main_config
+    load_module /etc/nginx/modules/ngx_http_json_module.so;
+--- config
+    json_loads $token_json $token;
+    json_dumps $out $token_json k;
+    location /inherit {
+        set $token '{"k":"K","z":"Z"}';
+        return 200 $out;
+    }
+    location /override {
+        set $token '{"k":"K","z":"Z"}';
+        json_dumps $out $token_json z;
+        return 200 $out;
+    }
+--- request eval
+["GET /inherit", "GET /override"]
+--- response_body eval
+["K", "Z"]
+
+
+
+=== TEST 20: defining the same json variable twice in one block is rejected
+--- main_config
+    load_module /etc/nginx/modules/ngx_http_json_module.so;
+--- config
+    location /echo {
+        set $token '{"a":1}';
+        json_loads $token_json $token;
+        json_dumps $out $token_json a;
+        json_dumps $out $token_json b;
+        return 200 ok;
+    }
+--- request
+GET /echo
+--- must_die
+--- error_log
+duplicate json variable "$out"
