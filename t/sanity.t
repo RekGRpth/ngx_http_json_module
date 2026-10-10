@@ -174,7 +174,7 @@ GET /echo
 ngx_atoi = NGX_ERROR
 
 
-=== TEST 11: json_dumps silently ignores extra path segments once the value is no longer a container
+=== TEST 11: json_dumps yields an empty value when a path segment descends into a non-container
 --- main_config
     load_module /etc/nginx/modules/ngx_http_json_module.so;
 --- config
@@ -182,12 +182,12 @@ ngx_atoi = NGX_ERROR
         set $token '{"a":"b"}';
         json_loads $token_json $token;
         json_dumps $out $token_json a extra;
-        return 200 $out;
+        return 200 "[$out]";
     }
 --- request
 GET /echo
 --- response_body chomp
-b
+[]
 
 
 === TEST 12: json_dumps on a source variable that was never computed yields an empty value

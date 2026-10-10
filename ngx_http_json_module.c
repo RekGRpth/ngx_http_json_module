@@ -70,7 +70,7 @@ static ngx_int_t ngx_http_json_dumps_variable(ngx_http_request_t *r, ngx_http_va
                     if (index == NGX_ERROR) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_atoi = NGX_ERROR"); *v = ngx_http_variable_null_value; return NGX_OK; }
                     json = json_array_get(json, (size_t)index);
                 } break;
-                default: break;
+                default: json = NULL; break;
             }
         }
     }
