@@ -54,24 +54,22 @@ static ngx_int_t ngx_http_json_dumps_variable(ngx_http_request_t *r, ngx_http_va
     json_t *json = box->json;
     ngx_uint_t nkeys = ctx->keys ? ctx->keys->nelts : 0;
     ngx_http_complex_value_t *keys = ctx->keys ? ctx->keys->elts : NULL;
-    if (json_is_object(json) || json_is_array(json)) {
-        for (ngx_uint_t i = 0; json && i < nkeys; i++) {
-            ngx_str_t key;
-            if (ngx_http_complex_value(r, &keys[i], &key) != NGX_OK) { *v = ngx_http_variable_null_value; return NGX_OK; }
-            switch (json_typeof(json)) {
-                case JSON_OBJECT: {
-                    u_char *k = ngx_pnalloc(r->pool, key.len + 1);
-                    if (!k) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); *v = ngx_http_variable_null_value; return NGX_OK; }
-                    (void)ngx_cpystrn(k, key.data, key.len + 1);
-                    json = json_object_get(json, (const char *)k);
-                } break;
-                case JSON_ARRAY: {
-                    ngx_int_t index = ngx_atoi(key.data, key.len);
-                    if (index == NGX_ERROR) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_atoi = NGX_ERROR"); *v = ngx_http_variable_null_value; return NGX_OK; }
-                    json = json_array_get(json, (size_t)index);
-                } break;
-                default: json = NULL; break;
-            }
+    for (ngx_uint_t i = 0; json && i < nkeys; i++) {
+        ngx_str_t key;
+        if (ngx_http_complex_value(r, &keys[i], &key) != NGX_OK) { *v = ngx_http_variable_null_value; return NGX_OK; }
+        switch (json_typeof(json)) {
+            case JSON_OBJECT: {
+                u_char *k = ngx_pnalloc(r->pool, key.len + 1);
+                if (!k) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_pnalloc"); *v = ngx_http_variable_null_value; return NGX_OK; }
+                (void)ngx_cpystrn(k, key.data, key.len + 1);
+                json = json_object_get(json, (const char *)k);
+            } break;
+            case JSON_ARRAY: {
+                ngx_int_t index = ngx_atoi(key.data, key.len);
+                if (index == NGX_ERROR) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ngx_atoi = NGX_ERROR"); *v = ngx_http_variable_null_value; return NGX_OK; }
+                json = json_array_get(json, (size_t)index);
+            } break;
+            default: json = NULL; break;
         }
     }
     if (!json) { *v = ngx_http_variable_null_value; return NGX_OK; }

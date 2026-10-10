@@ -267,3 +267,20 @@ GET /echo
 --- must_die
 --- error_log
 invalid variable name
+
+
+
+=== TEST 17: json_dumps yields an empty value when a path is applied to a scalar root
+--- main_config
+    load_module /etc/nginx/modules/ngx_http_json_module.so;
+--- config
+    location /echo {
+        set $token '"abc"';
+        json_loads $token_json $token;
+        json_dumps $out $token_json x;
+        return 200 "[$out]";
+    }
+--- request
+GET /echo
+--- response_body chomp
+[]
