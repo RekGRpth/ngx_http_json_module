@@ -105,13 +105,13 @@ GET /echo
 null
 
 
-=== TEST 7: json_dumps on a variable never produced by json_loads yields an empty value instead of dereferencing it as a pointer
+=== TEST 7: json_dumps on a variable never produced by json_loads yields an empty value
 --- main_config
     load_module /etc/nginx/modules/ngx_http_json_module.so;
 --- config
     location /echo {
-        set $fake "1234567890123456";
-        json_dumps $out $fake;
+        set $fake '{"a":"b"}';
+        json_dumps $out $fake a;
         return 200 "[$out]";
     }
 --- request
@@ -119,16 +119,18 @@ GET /echo
 --- response_body chomp
 []
 --- error_log
-!ngx_http_json_box_t magic
+"$fake" is not a json_loads value
 
 
-=== TEST 8: json_dumps rejects a source variable of the wrong length outright
+=== TEST 8: json_dumps rejects a json_loads variable whose value was overwritten by set
 --- main_config
     load_module /etc/nginx/modules/ngx_http_json_module.so;
 --- config
     location /echo {
-        set $short "abc";
-        json_dumps $out $short;
+        set $token '{"a":"b"}';
+        json_loads $token_json $token;
+        set $token_json '{"a":"b"}';
+        json_dumps $out $token_json a;
         return 200 "[$out]";
     }
 --- request
@@ -136,7 +138,7 @@ GET /echo
 --- response_body chomp
 []
 --- error_log
-vv->len != sizeof(ngx_http_json_box_t)
+"$token_json" is not a json_loads value
 
 
 === TEST 9: json_loads on invalid JSON yields an empty value instead of failing the request
@@ -348,3 +350,41 @@ GET /echo
 --- must_die
 --- error_log
 duplicate json variable "$out"
+
+
+
+=== TEST 21: printing a json_loads variable yields its source text
+--- main_config
+    load_module /etc/nginx/modules/ngx_http_json_module.so;
+--- config
+    location /echo {
+        set $token '{"a": "b"}';
+        json_loads $token_json $token;
+        return 200 $token_json;
+    }
+--- request
+GET /echo
+--- response_body chomp
+{"a": "b"}
+
+
+
+=== TEST 22: a json_loads value computed before an internal redirect stays usable after it
+--- main_config
+    load_module /etc/nginx/modules/ngx_http_json_module.so;
+--- config
+    location /a {
+        set $token '{"k":"v"}';
+        json_loads $token_json $token;
+        set $probe $token_json;
+        error_page 404 = /b;
+        return 404;
+    }
+    location /b {
+        json_dumps $out $token_json k;
+        return 200 $out;
+    }
+--- request
+GET /a
+--- response_body chomp
+v
