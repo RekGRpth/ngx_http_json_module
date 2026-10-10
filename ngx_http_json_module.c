@@ -41,7 +41,7 @@ static void ngx_http_json_cleanup(void *data) {
 static ngx_int_t ngx_http_json_loads_variable(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data) {
     ngx_http_json_loads_ctx_t *ctx = (ngx_http_json_loads_ctx_t *)data;
     ngx_str_t text;
-    if (ngx_http_complex_value(r, &ctx->cv, &text) != NGX_OK) { *v = ngx_http_variable_null_value; return NGX_OK; }
+    if (ngx_http_complex_value(r, &ctx->cv, &text) != NGX_OK) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_complex_value"); *v = ngx_http_variable_null_value; return NGX_OK; }
     json_error_t error;
     json_t *json = json_loadb((char *)text.data, text.len, JSON_DECODE_ANY, &error);
     if (!json) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!json_loadb: %s", error.text); *v = ngx_http_variable_null_value; return NGX_OK; }
@@ -77,7 +77,7 @@ static ngx_int_t ngx_http_json_dumps_variable(ngx_http_request_t *r, ngx_http_va
     ngx_http_complex_value_t *keys = ctx->keys ? ctx->keys->elts : NULL;
     for (ngx_uint_t i = 0; json && i < nkeys; i++) {
         ngx_str_t key;
-        if (ngx_http_complex_value(r, &keys[i], &key) != NGX_OK) { *v = ngx_http_variable_null_value; return NGX_OK; }
+        if (ngx_http_complex_value(r, &keys[i], &key) != NGX_OK) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!ngx_http_complex_value"); *v = ngx_http_variable_null_value; return NGX_OK; }
         switch (json_typeof(json)) {
             case JSON_OBJECT: {
                 u_char *k = ngx_pnalloc(r->pool, key.len + 1);
@@ -96,7 +96,7 @@ static ngx_int_t ngx_http_json_dumps_variable(ngx_http_request_t *r, ngx_http_va
     if (!json) { *v = ngx_http_variable_null_value; return NGX_OK; }
     ngx_flag_t dumped = !nkeys;
     const char *value = nkeys ? json_string_value(json) : json_dumps(json, JSON_PRESERVE_ORDER | JSON_ENCODE_ANY | JSON_COMPACT);
-    if (nkeys && !value) { ngx_log_error(NGX_LOG_WARN, r->connection->log, 0, "!json_string_value"); value = json_dumps(json, JSON_PRESERVE_ORDER | JSON_ENCODE_ANY | JSON_COMPACT); dumped = 1; }
+    if (nkeys && !value) { ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "!json_string_value"); value = json_dumps(json, JSON_PRESERVE_ORDER | JSON_ENCODE_ANY | JSON_COMPACT); dumped = 1; }
     if (!value) { ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "!json_dumps"); *v = ngx_http_variable_null_value; return NGX_OK; }
     size_t len = ngx_strlen(value);
     u_char *out;
@@ -171,7 +171,7 @@ static char *ngx_http_json_dumps_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *
     value[2].len--;
     value[2].data++;
     ngx_int_t src_index = ngx_http_get_variable_index(cf, &value[2]);
-    if (src_index == NGX_ERROR) { return "ngx_http_get_variable_index == NGX_ERROR"; }
+    if (src_index == NGX_ERROR) { return NGX_CONF_ERROR; }
     ngx_http_json_dumps_ctx_t *ctx = ngx_palloc(cf->pool, sizeof(ngx_http_json_dumps_ctx_t));
     if (!ctx) { return NGX_CONF_ERROR; }
     ctx->src_index = src_index;
